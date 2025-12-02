@@ -1,0 +1,229 @@
+// Gone Off - Incremental RPG Game Database Schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// USER & AUTHENTICATION
+// ============================================
+
+model User {
+  id           Int      @id @default(autoincrement())
+  username     String   @unique @db.VarChar(30)
+  sessionToken String?  @map("session_token") @db.VarChar(64)
+  createdAt    DateTime @default(now()) @map("created_at")
+  lastActive   DateTime @default(now()) @updatedAt @map("last_active")
+
+  // Relations
+  gameState    GameState?
+  inventory    Inventory[]
+  machines     Machine[]
+  upgrades     Upgrade[]
+  prestigeStats PrestigeStats?
+  achievements Achievement[]
+
+  @@index([username])
+  @@index([sessionToken])
+  @@map("users")
+}
+
+// ============================================
+// GAME STATE
+// ============================================
+
+model GameState {
+  id     Int @id @default(autoincrement())
+  userId Int @unique @map("user_id")
+
+  // Progress
+  currentStage Int @default(1) @map("current_stage")
+  highestStage Int @default(1) @map("highest_stage")
+
+  // Currencies
+  scrap         BigInt @default(0)
+  dataPoints    BigInt @default(0) @map("data_points")
+  coreFragments Int    @default(0) @map("core_fragments")
+
+  // Offline system
+  offlineCapLevel    Int      @default(1) @map("offline_cap_level")
+  lastSave           DateTime @default(now()) @map("last_save")
+  lastOfflineClaim   DateTime @default(now()) @map("last_offline_claim")
+
+  // Combat state
+  currentBossHp    BigInt @default(100) @map("current_boss_hp")
+  currentBossMaxHp BigInt @default(100) @map("current_boss_max_hp")
+
+  // Stats
+  totalTaps        BigInt @default(0) @map("total_taps")
+  totalDamageDealt BigInt @default(0) @map("total_damage_dealt")
+
+  // Equipped items
+  equippedWeaponId Int? @map("equipped_weapon_id")
+  equippedArmorId  Int? @map("equipped_armor_id")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("game_state")
+}
+
+// ============================================
+// ITEMS (STATIC DATA)
+// ============================================
+
+model Item {
+  id          Int      @id @default(autoincrement())
+  name        String   @db.VarChar(50)
+  type        ItemType
+  description String?  @db.Text
+
+  // Stats
+  damageBonus     Int     @default(0) @map("damage_bonus")
+  critChanceBonus Decimal @default(0) @map("crit_chance_bonus") @db.Decimal(5, 2)
+  critDamageBonus Decimal @default(0) @map("crit_damage_bonus") @db.Decimal(5, 2)
+  scrapBonus      Decimal @default(0) @map("scrap_bonus") @db.Decimal(5, 2)
+  dataBonus       Decimal @default(0) @map("data_bonus") @db.Decimal(5, 2)
+
+  // Requirements
+  unlockStage Int    @default(1) @map("unlock_stage")
+  costScrap   BigInt @default(0) @map("cost_scrap")
+  costData    BigInt @default(0) @map("cost_data")
+
+  // Consumable specific
+  effectDuration Int     @default(0) @map("effect_duration")
+  effectValue    Decimal @default(0) @map("effect_value") @db.Decimal(5, 2)
+
+  tier Int @default(1)
+
+  // Relations
+  inventoryItems Inventory[]
+
+  @@index([type])
+  @@index([unlockStage])
+  @@map("items")
+}
+
+enum ItemType {
+  weapon
+  armor
+  accessory
+  consumable
+}
+
+// ============================================
+// INVENTORY
+// ============================================
+
+model Inventory {
+  id           Int      @id @default(autoincrement())
+  userId       Int      @map("user_id")
+  itemId       Int      @map("item_id")
+  quantity     Int      @default(1)
+  upgradeLevel Int      @default(0) @map("upgrade_level")
+  isEquipped   Boolean  @default(false) @map("is_equipped")
+  acquiredAt   DateTime @default(now()) @map("acquired_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  item Item @relation(fields: [itemId], references: [id])
+
+  @@unique([userId, itemId])
+  @@index([userId])
+  @@index([userId, isEquipped])
+  @@map("inventory")
+}
+
+// ============================================
+// MACHINES (IDLE INCOME)
+// ============================================
+
+model Machine {
+  id            Int         @id @default(autoincrement())
+  userId        Int         @map("user_id")
+  machineType   MachineType @map("machine_type")
+  level         Int         @default(1)
+  lastCollected DateTime    @default(now()) @map("last_collected")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, machineType])
+  @@index([userId])
+  @@map("machines")
+}
+
+enum MachineType {
+  scrap_collector
+  data_miner
+  auto_turret
+  efficiency_bot
+}
+
+// ============================================
+// UPGRADES
+// ============================================
+
+model Upgrade {
+  id          Int     @id @default(autoincrement())
+  userId      Int     @map("user_id")
+  upgradeType String  @map("upgrade_type") @db.VarChar(30)
+  level       Int     @default(0)
+  isPermanent Boolean @default(false) @map("is_permanent")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, upgradeType])
+  @@index([userId])
+  @@index([userId, isPermanent])
+  @@map("upgrades")
+}
+
+// ============================================
+// PRESTIGE STATS
+// ============================================
+
+model PrestigeStats {
+  id     Int @id @default(autoincrement())
+  userId Int @unique @map("user_id")
+
+  totalPrestiges        Int    @default(0) @map("total_prestiges")
+  lifetimeScrap         BigInt @default(0) @map("lifetime_scrap")
+  lifetimeData          BigInt @default(0) @map("lifetime_data")
+  lifetimeCoreFragments Int    @default(0) @map("lifetime_core_fragments")
+  lifetimeBossesKilled  Int    @default(0) @map("lifetime_bosses_killed")
+  lifetimeTaps          BigInt @default(0) @map("lifetime_taps")
+
+  fastestStage100  Int?   @map("fastest_stage_100")
+  highestDamageHit BigInt @default(0) @map("highest_damage_hit")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("prestige_stats")
+}
+
+// ============================================
+// ACHIEVEMENTS
+// ============================================
+
+model Achievement {
+  id             Int      @id @default(autoincrement())
+  userId         Int      @map("user_id")
+  achievementKey String   @map("achievement_key") @db.VarChar(50)
+  unlockedAt     DateTime @default(now()) @map("unlocked_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, achievementKey])
+  @@index([userId])
+  @@map("achievements")
+}

@@ -1,26 +1,299 @@
 @import "tailwindcss";
+@import "tw-animate-css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:is(.dark *));
+
+/* Gone Off - Cyberpunk Dark Theme */
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-sans), system-ui, sans-serif;
+  --font-mono: var(--font-mono), monospace;
+  --font-display: var(--font-display), sans-serif;
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  /* Game-specific colors */
+  --color-scrap: var(--scrap);
+  --color-data: var(--data);
+  --color-core: var(--core);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-hp-high: var(--hp-high);
+  --color-hp-mid: var(--hp-mid);
+  --color-hp-low: var(--hp-low);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* Force dark mode - mobile game aesthetic */
+:root {
+  --radius: 0.5rem;
+
+  /* Cyberpunk Dark Theme */
+  --background: #0a0a0f;
+  --foreground: #e4e4e7;
+  --card: #18181b;
+  --card-foreground: #fafafa;
+  --popover: #18181b;
+  --popover-foreground: #fafafa;
+  --primary: #22d3ee;
+  --primary-foreground: #0a0a0f;
+  --secondary: #a855f7;
+  --secondary-foreground: #fafafa;
+  --muted: #27272a;
+  --muted-foreground: #a1a1aa;
+  --accent: #27272a;
+  --accent-foreground: #fafafa;
+  --destructive: #ef4444;
+  --border: #27272a;
+  --input: #27272a;
+  --ring: #22d3ee;
+
+  /* Game Currency Colors */
+  --scrap: #f59e0b;
+  --data: #3b82f6;
+  --core: #a855f7;
+
+  /* Status Colors */
+  --success: #22c55e;
+  --warning: #f59e0b;
+
+  /* HP Bar Colors */
+  --hp-high: #22c55e;
+  --hp-mid: #f59e0b;
+  --hp-low: #ef4444;
+
+  color-scheme: dark;
+}
+
+/* Dark mode is default, but keep for compatibility */
+.dark {
+  --background: #0a0a0f;
+  --foreground: #e4e4e7;
+  --card: #18181b;
+  --card-foreground: #fafafa;
+  --popover: #18181b;
+  --popover-foreground: #fafafa;
+  --primary: #22d3ee;
+  --primary-foreground: #0a0a0f;
+  --secondary: #a855f7;
+  --secondary-foreground: #fafafa;
+  --muted: #27272a;
+  --muted-foreground: #a1a1aa;
+  --accent: #27272a;
+  --accent-foreground: #fafafa;
+  --destructive: #ef4444;
+  --border: #27272a;
+  --input: #27272a;
+  --ring: #22d3ee;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* Mobile-first: prevent text selection on game elements */
+  .no-select {
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  /* Tap highlight removal for mobile */
+  button, a, [role="button"] {
+    -webkit-tap-highlight-color: transparent;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer utilities {
+  /* Currency text colors */
+  .text-scrap {
+    color: var(--scrap);
+  }
+  .text-data {
+    color: var(--data);
+  }
+  .text-core {
+    color: var(--core);
+  }
+
+  /* Glow effects for neon aesthetic */
+  .glow-primary {
+    box-shadow: 0 0 20px rgba(34, 211, 238, 0.3);
+  }
+  .glow-secondary {
+    box-shadow: 0 0 20px rgba(168, 85, 247, 0.3);
+  }
+  .glow-scrap {
+    box-shadow: 0 0 15px rgba(245, 158, 11, 0.4);
+  }
+  .glow-data {
+    box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);
+  }
+
+  /* Text glow */
+  .text-glow-primary {
+    text-shadow: 0 0 10px rgba(34, 211, 238, 0.5);
+  }
+  .text-glow-secondary {
+    text-shadow: 0 0 10px rgba(168, 85, 247, 0.5);
+  }
+
+  /* Safe area padding for mobile */
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+  .safe-top {
+    padding-top: env(safe-area-inset-top, 0);
+  }
+}
+
+/* Damage number animation */
+@keyframes damage-float {
+  0% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-80px) scale(0.8);
+    opacity: 0;
+  }
+}
+
+.animate-damage {
+  animation: damage-float 600ms ease-out forwards;
+}
+
+/* Critical hit animation */
+@keyframes crit-float {
+  0% {
+    transform: translateY(0) scale(1.2);
+    opacity: 1;
+  }
+  50% {
+    transform: translateY(-40px) scale(1.4);
+  }
+  100% {
+    transform: translateY(-100px) scale(1);
+    opacity: 0;
+  }
+}
+
+.animate-crit {
+  animation: crit-float 800ms ease-out forwards;
+}
+
+/* Boss shake animation */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
+}
+
+.animate-shake {
+  animation: shake 100ms ease;
+}
+
+/* Glitch effect */
+@keyframes glitch {
+  0% { clip-path: inset(40% 0 61% 0); transform: translate(-2px, 2px); }
+  20% { clip-path: inset(92% 0 1% 0); transform: translate(2px, -2px); }
+  40% { clip-path: inset(43% 0 1% 0); transform: translate(-2px, 0); }
+  60% { clip-path: inset(25% 0 58% 0); transform: translate(0, 2px); }
+  80% { clip-path: inset(54% 0 7% 0); transform: translate(2px, -2px); }
+  100% { clip-path: inset(58% 0 43% 0); transform: translate(-2px, 2px); }
+}
+
+.animate-glitch {
+  animation: glitch 200ms steps(2) infinite;
+}
+
+/* Pulse for currency changes */
+@keyframes currency-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}
+
+.animate-currency-up {
+  animation: currency-pulse 300ms ease;
+  color: var(--success);
+}
+
+.animate-currency-down {
+  animation: currency-pulse 300ms ease;
+  color: var(--destructive);
+}
+
+/* Tap ripple effect */
+@keyframes ripple {
+  0% {
+    transform: scale(0);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(4);
+    opacity: 0;
+  }
+}
+
+.animate-ripple {
+  animation: ripple 400ms ease-out forwards;
+}
+
+/* Boss death dissolve */
+@keyframes dissolve {
+  0% {
+    opacity: 1;
+    filter: blur(0);
+  }
+  100% {
+    opacity: 0;
+    filter: blur(10px);
+  }
+}
+
+.animate-dissolve {
+  animation: dissolve 500ms ease-out forwards;
+}
+
+/* Scanline effect for cyberpunk aesthetic */
+.scanlines::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(0, 0, 0, 0.1) 0px,
+    rgba(0, 0, 0, 0.1) 1px,
+    transparent 1px,
+    transparent 2px
+  );
+  pointer-events: none;
 }

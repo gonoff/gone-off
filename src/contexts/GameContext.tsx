@@ -1,0 +1,776 @@
+'use client'
+
+import React, { createContext, useContext, useReducer, useCallback, useEffect, useRef } from 'react'
+import {
+  ClientGameState,
+  InventoryItem,
+  Machine,
+  Upgrade,
+  PrestigeStats,
+  Achievement,
+  Boss,
+  ActiveEffect,
+  MachineType,
+} from '@/lib/game/types'
+import {
+  getBossInfo,
+  calculateTapDamage,
+  getScrapReward,
+  getDataReward,
+  getTotalIdleProduction,
+  getWeaponDamageAtLevel,
+} from '@/lib/game/formulas'
+import { AUTO_SAVE_INTERVAL_MS } from '@/lib/game/constants'
+
+// ============================================
+// STATE TYPES
+// ============================================
+
+interface GameContextState {
+  // User
+  userId: number | null
+  username: string | null
+  isAuthenticated: boolean
+  isLoading: boolean
+
+  // Game State
+  gameState: ClientGameState
+  boss: Boss
+
+  // Collections
+  inventory: InventoryItem[]
+  machines: Machine[]
+  upgrades: Upgrade[]
+  prestigeStats: PrestigeStats
+  achievements: Achievement[]
+
+  // Active effects
+  activeEffects: ActiveEffect[]
+
+  // UI State
+  damageNumbers: DamageNumber[]
+  showWelcomeBack: boolean
+  offlineEarnings: { scrap: number; data: number; timeAway: number } | null
+}
+
+interface DamageNumber {
+  id: string
+  damage: number
+  isCritical: boolean
+  x: number
+  y: number
+}
+
+// ============================================
+// ACTIONS
+// ============================================
+
+type GameAction =
+  | { type: 'SET_LOADING'; payload: boolean }
+  | { type: 'SET_USER'; payload: { userId: number; username: string } }
+  | { type: 'LOGOUT' }
+  | { type: 'LOAD_GAME_DATA'; payload: Partial<GameContextState> }
+  | { type: 'TAP'; payload: { x: number; y: number } }
+  | { type: 'BOSS_DEFEATED' }
+  | { type: 'REMOVE_DAMAGE_NUMBER'; payload: string }
+  | { type: 'UPDATE_CURRENCIES'; payload: { scrap?: number; dataPoints?: number; coreFragments?: number } }
+  | { type: 'BUY_ITEM'; payload: { item: InventoryItem } }
+  | { type: 'EQUIP_ITEM'; payload: { itemId: number; type: 'weapon' | 'armor' } }
+  | { type: 'UPGRADE_WEAPON'; payload: { itemId: number } }
+  | { type: 'BUY_MACHINE'; payload: { machineType: MachineType } }
+  | { type: 'BUY_UPGRADE'; payload: { upgradeType: string; isPermanent: boolean } }
+  | { type: 'PRESTIGE' }
+  | { type: 'TICK_IDLE' }
+  | { type: 'DISMISS_WELCOME_BACK' }
+  | { type: 'SET_OFFLINE_EARNINGS'; payload: { scrap: number; data: number; timeAway: number } | null }
+  | { type: 'COLLECT_OFFLINE' }
+
+// ============================================
+// INITIAL STATE
+// ============================================
+
+const initialGameState: ClientGameState = {
+  currentStage: 1,
+  highestStage: 1,
+  scrap: 0,
+  dataPoints: 0,
+  coreFragments: 0,
+  offlineCapLevel: 1,
+  currentBossHp: 100,
+  currentBossMaxHp: 100,
+  totalTaps: 0,
+  totalDamageDealt: 0,
+  equippedWeaponId: null,
+  equippedArmorId: null,
+}
+
+const initialPrestigeStats: PrestigeStats = {
+  totalPrestiges: 0,
+  lifetimeScrap: 0,
+  lifetimeData: 0,
+  lifetimeCoreFragments: 0,
+  lifetimeBossesKilled: 0,
+  lifetimeTaps: 0,
+  fastestStage100: null,
+  highestDamageHit: 0,
+}
+
+const initialState: GameContextState = {
+  userId: null,
+  username: null,
+  isAuthenticated: false,
+  isLoading: true,
+  gameState: initialGameState,
+  boss: getBossInfo(1),
+  inventory: [],
+  machines: [],
+  upgrades: [],
+  prestigeStats: initialPrestigeStats,
+  achievements: [],
+  activeEffects: [],
+  damageNumbers: [],
+  showWelcomeBack: false,
+  offlineEarnings: null,
+}
+
+// ============================================
+// REDUCER
+// ============================================
+
+function gameReducer(state: GameContextState, action: GameAction): GameContextState {
+  switch (action.type) {
+    case 'SET_LOADING':
+      return { ...state, isLoading: action.payload }
+
+    case 'SET_USER':
+      return {
+        ...state,
+        userId: action.payload.userId,
+        username: action.payload.username,
+        isAuthenticated: true,
+      }
+
+    case 'LOGOUT':
+      return { ...initialState, isLoading: false }
+
+    case 'LOAD_GAME_DATA': {
+      const newState = { ...state, ...action.payload, isLoading: false }
+      // Regenerate boss info based on loaded stage
+      if (action.payload.gameState) {
+        newState.boss = getBossInfo(action.payload.gameState.currentStage)
+        newState.boss.hp = action.payload.gameState.currentBossHp
+      }
+      return newState
+    }
+
+    case 'TAP': {
+      // Get equipped weapon damage
+      const equippedWeapon = state.inventory.find(
+        i => i.id === state.gameState.equippedWeaponId && i.type === 'weapon'
+      )
+      const weaponDamage = equippedWeapon
+        ? getWeaponDamageAtLevel(equippedWeapon.damageBonus, equippedWeapon.upgradeLevel)
+        : 0
+
+      // Get active damage boost
+      const damageBoost = state.activeEffects
+        .filter(e => e.type === 'damage_boost' && e.endsAt > Date.now())
+        .reduce((mult, e) => mult * e.value, 1)
+
+      const { damage, isCritical } = calculateTapDamage(weaponDamage, state.upgrades, { damageBoost })
+
+      const newBossHp = Math.max(0, state.boss.hp - damage)
+      const damageId = `${Date.now()}-${Math.random()}`
+
+      const newDamageNumber: DamageNumber = {
+        id: damageId,
+        damage,
+        isCritical,
+        x: action.payload.x + (Math.random() - 0.5) * 50,
+        y: action.payload.y,
+      }
+
+      return {
+        ...state,
+        boss: { ...state.boss, hp: newBossHp },
+        gameState: {
+          ...state.gameState,
+          currentBossHp: newBossHp,
+          totalTaps: state.gameState.totalTaps + 1,
+          totalDamageDealt: state.gameState.totalDamageDealt + damage,
+        },
+        prestigeStats: {
+          ...state.prestigeStats,
+          lifetimeTaps: state.prestigeStats.lifetimeTaps + 1,
+          highestDamageHit: Math.max(state.prestigeStats.highestDamageHit, damage),
+        },
+        damageNumbers: [...state.damageNumbers, newDamageNumber],
+      }
+    }
+
+    case 'BOSS_DEFEATED': {
+      const rewards = state.boss.rewards
+      const dropBonus = state.upgrades.find(u => u.upgradeType === 'drop_rate')?.level ?? 0
+      const dropMult = 1 + (dropBonus * 0.05)
+
+      const scrapGain = Math.floor(rewards.scrap * dropMult)
+      const dataGain = Math.floor(rewards.data * dropMult)
+
+      const nextStage = state.gameState.currentStage + 1
+      const newBoss = getBossInfo(nextStage)
+
+      return {
+        ...state,
+        gameState: {
+          ...state.gameState,
+          currentStage: nextStage,
+          highestStage: Math.max(state.gameState.highestStage, nextStage),
+          scrap: state.gameState.scrap + scrapGain,
+          dataPoints: state.gameState.dataPoints + dataGain,
+          currentBossHp: newBoss.maxHp,
+          currentBossMaxHp: newBoss.maxHp,
+        },
+        boss: newBoss,
+        prestigeStats: {
+          ...state.prestigeStats,
+          lifetimeScrap: state.prestigeStats.lifetimeScrap + scrapGain,
+          lifetimeData: state.prestigeStats.lifetimeData + dataGain,
+          lifetimeBossesKilled: state.prestigeStats.lifetimeBossesKilled + 1,
+        },
+      }
+    }
+
+    case 'REMOVE_DAMAGE_NUMBER':
+      return {
+        ...state,
+        damageNumbers: state.damageNumbers.filter(d => d.id !== action.payload),
+      }
+
+    case 'UPDATE_CURRENCIES':
+      return {
+        ...state,
+        gameState: {
+          ...state.gameState,
+          scrap: action.payload.scrap ?? state.gameState.scrap,
+          dataPoints: action.payload.dataPoints ?? state.gameState.dataPoints,
+          coreFragments: action.payload.coreFragments ?? state.gameState.coreFragments,
+        },
+      }
+
+    case 'BUY_ITEM': {
+      const existingItem = state.inventory.find(i => i.id === action.payload.item.id)
+      let newInventory: InventoryItem[]
+
+      if (existingItem) {
+        newInventory = state.inventory.map(i =>
+          i.id === action.payload.item.id
+            ? { ...i, quantity: i.quantity + 1 }
+            : i
+        )
+      } else {
+        newInventory = [...state.inventory, action.payload.item]
+      }
+
+      return { ...state, inventory: newInventory }
+    }
+
+    case 'EQUIP_ITEM': {
+      const newInventory = state.inventory.map(i => ({
+        ...i,
+        isEquipped: i.id === action.payload.itemId
+          ? true
+          : i.type === action.payload.type ? false : i.isEquipped,
+      }))
+
+      const equippedId = action.payload.type === 'weapon'
+        ? { equippedWeaponId: action.payload.itemId }
+        : { equippedArmorId: action.payload.itemId }
+
+      return {
+        ...state,
+        inventory: newInventory,
+        gameState: { ...state.gameState, ...equippedId },
+      }
+    }
+
+    case 'UPGRADE_WEAPON': {
+      const newInventory = state.inventory.map(i =>
+        i.id === action.payload.itemId
+          ? { ...i, upgradeLevel: i.upgradeLevel + 1 }
+          : i
+      )
+      return { ...state, inventory: newInventory }
+    }
+
+    case 'BUY_MACHINE': {
+      const existingMachine = state.machines.find(m => m.machineType === action.payload.machineType)
+
+      if (existingMachine) {
+        const newMachines = state.machines.map(m =>
+          m.machineType === action.payload.machineType
+            ? { ...m, level: m.level + 1 }
+            : m
+        )
+        return { ...state, machines: newMachines }
+      } else {
+        const newMachine: Machine = {
+          id: Date.now(),
+          machineType: action.payload.machineType,
+          level: 1,
+          lastCollected: new Date(),
+        }
+        return { ...state, machines: [...state.machines, newMachine] }
+      }
+    }
+
+    case 'BUY_UPGRADE': {
+      const existingUpgrade = state.upgrades.find(
+        u => u.upgradeType === action.payload.upgradeType
+      )
+
+      if (existingUpgrade) {
+        const newUpgrades = state.upgrades.map(u =>
+          u.upgradeType === action.payload.upgradeType
+            ? { ...u, level: u.level + 1 }
+            : u
+        )
+        return { ...state, upgrades: newUpgrades }
+      } else {
+        const newUpgrade: Upgrade = {
+          id: Date.now(),
+          upgradeType: action.payload.upgradeType,
+          level: 1,
+          isPermanent: action.payload.isPermanent,
+        }
+        return { ...state, upgrades: [...state.upgrades, newUpgrade] }
+      }
+    }
+
+    case 'TICK_IDLE': {
+      const { scrap, data, dps } = getTotalIdleProduction(state.machines, state.upgrades)
+
+      // Apply DPS to boss
+      let newBossHp = state.boss.hp
+      if (dps > 0) {
+        newBossHp = Math.max(0, state.boss.hp - dps)
+      }
+
+      return {
+        ...state,
+        boss: { ...state.boss, hp: newBossHp },
+        gameState: {
+          ...state.gameState,
+          scrap: state.gameState.scrap + scrap,
+          dataPoints: state.gameState.dataPoints + data,
+          currentBossHp: newBossHp,
+        },
+        prestigeStats: {
+          ...state.prestigeStats,
+          lifetimeScrap: state.prestigeStats.lifetimeScrap + scrap,
+          lifetimeData: state.prestigeStats.lifetimeData + data,
+        },
+      }
+    }
+
+    case 'PRESTIGE': {
+      // Reset temporary state, keep permanent upgrades
+      const permUpgrades = state.upgrades.filter(u => u.isPermanent)
+
+      return {
+        ...state,
+        gameState: {
+          ...initialGameState,
+          coreFragments: state.gameState.coreFragments,
+        },
+        boss: getBossInfo(1),
+        inventory: [],
+        machines: [],
+        upgrades: permUpgrades,
+        prestigeStats: {
+          ...state.prestigeStats,
+          totalPrestiges: state.prestigeStats.totalPrestiges + 1,
+        },
+      }
+    }
+
+    case 'SET_OFFLINE_EARNINGS':
+      return {
+        ...state,
+        offlineEarnings: action.payload,
+        showWelcomeBack: action.payload !== null,
+      }
+
+    case 'DISMISS_WELCOME_BACK':
+      return { ...state, showWelcomeBack: false }
+
+    case 'COLLECT_OFFLINE': {
+      if (!state.offlineEarnings) return state
+
+      return {
+        ...state,
+        gameState: {
+          ...state.gameState,
+          scrap: state.gameState.scrap + state.offlineEarnings.scrap,
+          dataPoints: state.gameState.dataPoints + state.offlineEarnings.data,
+        },
+        prestigeStats: {
+          ...state.prestigeStats,
+          lifetimeScrap: state.prestigeStats.lifetimeScrap + state.offlineEarnings.scrap,
+          lifetimeData: state.prestigeStats.lifetimeData + state.offlineEarnings.data,
+        },
+        offlineEarnings: null,
+        showWelcomeBack: false,
+      }
+    }
+
+    default:
+      return state
+  }
+}
+
+// ============================================
+// CONTEXT
+// ============================================
+
+interface GameContextValue extends GameContextState {
+  // Actions
+  tap: (x: number, y: number) => void
+  login: (username: string) => Promise<boolean>
+  logout: () => void
+  buyItem: (itemId: number) => Promise<boolean>
+  equipItem: (itemId: number, type: 'weapon' | 'armor') => void
+  upgradeWeapon: (itemId: number) => Promise<boolean>
+  buyMachine: (machineType: MachineType) => Promise<boolean>
+  buyUpgrade: (upgradeType: string, isPermanent: boolean) => Promise<boolean>
+  prestige: () => Promise<boolean>
+  collectOffline: () => void
+  dismissWelcomeBack: () => void
+}
+
+const GameContext = createContext<GameContextValue | null>(null)
+
+// ============================================
+// PROVIDER
+// ============================================
+
+export function GameProvider({ children }: { children: React.ReactNode }) {
+  const [state, dispatch] = useReducer(gameReducer, initialState)
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const idleIntervalRef = useRef<NodeJS.Timeout | null>(null)
+
+  // Check for boss defeat
+  useEffect(() => {
+    if (state.boss.hp <= 0 && state.isAuthenticated) {
+      dispatch({ type: 'BOSS_DEFEATED' })
+    }
+  }, [state.boss.hp, state.isAuthenticated])
+
+  // Remove damage numbers after animation
+  useEffect(() => {
+    state.damageNumbers.forEach(dmg => {
+      setTimeout(() => {
+        dispatch({ type: 'REMOVE_DAMAGE_NUMBER', payload: dmg.id })
+      }, 600)
+    })
+  }, [state.damageNumbers])
+
+  // Idle tick (every second)
+  useEffect(() => {
+    if (state.isAuthenticated && state.machines.length > 0) {
+      idleIntervalRef.current = setInterval(() => {
+        dispatch({ type: 'TICK_IDLE' })
+      }, 1000)
+    }
+
+    return () => {
+      if (idleIntervalRef.current) {
+        clearInterval(idleIntervalRef.current)
+      }
+    }
+  }, [state.isAuthenticated, state.machines.length])
+
+  // Auto-save
+  useEffect(() => {
+    if (state.isAuthenticated && !state.isLoading) {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current)
+      }
+
+      saveTimeoutRef.current = setTimeout(async () => {
+        try {
+          await fetch('/api/game/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ gameState: state.gameState }),
+          })
+        } catch (error) {
+          console.error('Auto-save failed:', error)
+        }
+      }, AUTO_SAVE_INTERVAL_MS)
+    }
+
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current)
+      }
+    }
+  }, [state.gameState, state.isAuthenticated, state.isLoading])
+
+  // Load game on mount
+  useEffect(() => {
+    const loadGame = async () => {
+      try {
+        const sessionToken = localStorage.getItem('sessionToken')
+        if (!sessionToken) {
+          dispatch({ type: 'SET_LOADING', payload: false })
+          return
+        }
+
+        const response = await fetch('/api/game/state', {
+          headers: { Authorization: `Bearer ${sessionToken}` },
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          dispatch({
+            type: 'LOAD_GAME_DATA',
+            payload: {
+              userId: data.user.id,
+              username: data.user.username,
+              isAuthenticated: true,
+              gameState: data.gameState,
+              inventory: data.inventory,
+              machines: data.machines,
+              upgrades: data.upgrades,
+              prestigeStats: data.prestigeStats,
+              achievements: data.achievements,
+            },
+          })
+
+          if (data.offlineEarnings && (data.offlineEarnings.scrap > 0 || data.offlineEarnings.data > 0)) {
+            dispatch({
+              type: 'SET_OFFLINE_EARNINGS',
+              payload: data.offlineEarnings,
+            })
+          }
+        } else {
+          localStorage.removeItem('sessionToken')
+          dispatch({ type: 'SET_LOADING', payload: false })
+        }
+      } catch (error) {
+        console.error('Failed to load game:', error)
+        dispatch({ type: 'SET_LOADING', payload: false })
+      }
+    }
+
+    loadGame()
+  }, [])
+
+  // Actions
+  const tap = useCallback((x: number, y: number) => {
+    dispatch({ type: 'TAP', payload: { x, y } })
+  }, [])
+
+  const login = useCallback(async (username: string): Promise<boolean> => {
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        localStorage.setItem('sessionToken', data.sessionToken)
+        dispatch({
+          type: 'SET_USER',
+          payload: { userId: data.user.id, username: data.user.username },
+        })
+        dispatch({
+          type: 'LOAD_GAME_DATA',
+          payload: {
+            gameState: data.gameState ?? initialGameState,
+            inventory: data.inventory ?? [],
+            machines: data.machines ?? [],
+            upgrades: data.upgrades ?? [],
+            prestigeStats: data.prestigeStats ?? initialPrestigeStats,
+            achievements: data.achievements ?? [],
+          },
+        })
+        return true
+      }
+      return false
+    } catch (error) {
+      console.error('Login failed:', error)
+      return false
+    }
+  }, [])
+
+  const logout = useCallback(() => {
+    localStorage.removeItem('sessionToken')
+    dispatch({ type: 'LOGOUT' })
+  }, [])
+
+  const buyItem = useCallback(async (itemId: number): Promise<boolean> => {
+    try {
+      const response = await fetch('/api/shop/buy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemId }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        dispatch({ type: 'BUY_ITEM', payload: { item: data.item } })
+        dispatch({
+          type: 'UPDATE_CURRENCIES',
+          payload: { scrap: data.newScrap, dataPoints: data.newData },
+        })
+        return true
+      }
+      return false
+    } catch (error) {
+      console.error('Buy failed:', error)
+      return false
+    }
+  }, [])
+
+  const equipItem = useCallback((itemId: number, type: 'weapon' | 'armor') => {
+    dispatch({ type: 'EQUIP_ITEM', payload: { itemId, type } })
+  }, [])
+
+  const upgradeWeapon = useCallback(async (itemId: number): Promise<boolean> => {
+    try {
+      const response = await fetch('/api/shop/upgrade-weapon', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemId }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        dispatch({ type: 'UPGRADE_WEAPON', payload: { itemId } })
+        dispatch({
+          type: 'UPDATE_CURRENCIES',
+          payload: { scrap: data.newScrap },
+        })
+        return true
+      }
+      return false
+    } catch (error) {
+      console.error('Upgrade failed:', error)
+      return false
+    }
+  }, [])
+
+  const buyMachine = useCallback(async (machineType: MachineType): Promise<boolean> => {
+    try {
+      const response = await fetch('/api/machines/buy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ machineType }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        dispatch({ type: 'BUY_MACHINE', payload: { machineType } })
+        dispatch({
+          type: 'UPDATE_CURRENCIES',
+          payload: { scrap: data.newScrap, dataPoints: data.newData },
+        })
+        return true
+      }
+      return false
+    } catch (error) {
+      console.error('Buy machine failed:', error)
+      return false
+    }
+  }, [])
+
+  const buyUpgrade = useCallback(async (upgradeType: string, isPermanent: boolean): Promise<boolean> => {
+    try {
+      const response = await fetch('/api/upgrades/buy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ upgradeType }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        dispatch({ type: 'BUY_UPGRADE', payload: { upgradeType, isPermanent } })
+        dispatch({
+          type: 'UPDATE_CURRENCIES',
+          payload: {
+            scrap: data.newScrap,
+            dataPoints: data.newData,
+            coreFragments: data.newCoreFragments,
+          },
+        })
+        return true
+      }
+      return false
+    } catch (error) {
+      console.error('Buy upgrade failed:', error)
+      return false
+    }
+  }, [])
+
+  const prestige = useCallback(async (): Promise<boolean> => {
+    try {
+      const response = await fetch('/api/prestige/reboot', {
+        method: 'POST',
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        dispatch({ type: 'PRESTIGE' })
+        dispatch({
+          type: 'UPDATE_CURRENCIES',
+          payload: { coreFragments: data.totalCoreFragments },
+        })
+        return true
+      }
+      return false
+    } catch (error) {
+      console.error('Prestige failed:', error)
+      return false
+    }
+  }, [])
+
+  const collectOffline = useCallback(() => {
+    dispatch({ type: 'COLLECT_OFFLINE' })
+  }, [])
+
+  const dismissWelcomeBack = useCallback(() => {
+    dispatch({ type: 'DISMISS_WELCOME_BACK' })
+  }, [])
+
+  const value: GameContextValue = {
+    ...state,
+    tap,
+    login,
+    logout,
+    buyItem,
+    equipItem,
+    upgradeWeapon,
+    buyMachine,
+    buyUpgrade,
+    prestige,
+    collectOffline,
+    dismissWelcomeBack,
+  }
+
+  return <GameContext.Provider value={value}>{children}</GameContext.Provider>
+}
+
+// ============================================
+// HOOK
+// ============================================
+
+export function useGame() {
+  const context = useContext(GameContext)
+  if (!context) {
+    throw new Error('useGame must be used within a GameProvider')
+  }
+  return context
+}
