@@ -16,7 +16,7 @@ import { formatNumber } from '@/lib/game/formulas'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { Badge } from '@/components/ui/badge'
-import { Zap, Target, Gift, Flame } from 'lucide-react'
+import { Zap, Target, Gift, Flame, Sparkles } from 'lucide-react'
 
 // Dynamic import for 3D boss (SSR disabled)
 const Boss3D = dynamic(
@@ -103,6 +103,12 @@ export default function FightPage() {
       .reduce((mult, e) => mult * e.value, 1),
     rewardBoost: activeEffects
       .filter(e => e.type === 'reward_boost' && e.endsAt > now)
+      .reduce((mult, e) => mult * e.value, 1),
+    scrapBoost: activeEffects
+      .filter(e => e.type === 'scrap_boost' && e.endsAt > now)
+      .reduce((mult, e) => mult * e.value, 1),
+    dataBoost: activeEffects
+      .filter(e => e.type === 'data_boost' && e.endsAt > now)
       .reduce((mult, e) => mult * e.value, 1),
   }
 
@@ -323,19 +329,43 @@ export default function FightPage() {
         />
 
         {/* Active Buffs Indicator */}
-        <AnimatePresence>
-          {activeBuffs.damageBoost > 1 && (
-            <motion.div
-              initial={{ opacity: 0, x: -50 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -50 }}
-              className="absolute top-4 left-4 z-20 px-3 py-1.5 bg-yellow-500/20 border border-yellow-500 rounded-lg flex items-center gap-2"
-            >
-              <Flame className="w-4 h-4 text-yellow-400" />
-              <span className="text-sm font-bold text-yellow-400">{activeBuffs.damageBoost}x DMG</span>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        <div className="absolute top-4 left-4 z-20 flex flex-col gap-1">
+          <AnimatePresence>
+            {activeBuffs.damageBoost > 1 && (
+              <motion.div
+                initial={{ opacity: 0, x: -50 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -50 }}
+                className="px-3 py-1.5 bg-yellow-500/20 border border-yellow-500 rounded-lg flex items-center gap-2"
+              >
+                <Flame className="w-4 h-4 text-yellow-400" />
+                <span className="text-sm font-bold text-yellow-400">{activeBuffs.damageBoost}x DMG</span>
+              </motion.div>
+            )}
+            {activeBuffs.scrapBoost > 1 && (
+              <motion.div
+                initial={{ opacity: 0, x: -50 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -50 }}
+                className="px-3 py-1.5 bg-green-500/20 border border-green-500 rounded-lg flex items-center gap-2"
+              >
+                <Gift className="w-4 h-4 text-green-400" />
+                <span className="text-sm font-bold text-green-400">{activeBuffs.scrapBoost}x SCRAP</span>
+              </motion.div>
+            )}
+            {activeBuffs.dataBoost > 1 && (
+              <motion.div
+                initial={{ opacity: 0, x: -50 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -50 }}
+                className="px-3 py-1.5 bg-cyan-500/20 border border-cyan-500 rounded-lg flex items-center gap-2"
+              >
+                <Sparkles className="w-4 h-4 text-cyan-400" />
+                <span className="text-sm font-bold text-cyan-400">{activeBuffs.dataBoost}x DATA</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
 
         {/* 3D Boss */}
         <div className="relative flex-shrink-0">
@@ -414,16 +444,17 @@ export default function FightPage() {
 
           <motion.div
             className="bg-muted/40 rounded-xl p-2 border border-border/30"
-            animate={activeBuffs.rewardBoost > 1 ? { borderColor: ['#a855f7', '#9333ea', '#a855f7'] } : {}}
+            animate={(activeBuffs.rewardBoost > 1 || activeBuffs.scrapBoost > 1) ? { borderColor: ['#22c55e', '#16a34a', '#22c55e'] } : {}}
             transition={{ duration: 0.5, repeat: Infinity }}
           >
             <div className="flex items-center justify-center gap-1 text-muted-foreground text-xs mb-0.5">
               <Gift className="w-3 h-3" /> REWARD
+              {activeBuffs.scrapBoost > 1 && <span className="text-green-400 text-[10px]">x{activeBuffs.scrapBoost}</span>}
             </div>
             <div className={`font-mono font-bold ${
-              activeBuffs.rewardBoost > 1 ? 'text-purple-400' : 'text-yellow-400'
+              (activeBuffs.rewardBoost > 1 || activeBuffs.scrapBoost > 1) ? 'text-green-400' : 'text-yellow-400'
             }`}>
-              {formatNumber(Math.floor(boss.rewards.scrap * activeBuffs.rewardBoost))}
+              {formatNumber(Math.floor(boss.rewards.scrap * activeBuffs.rewardBoost * activeBuffs.scrapBoost))}
             </div>
           </motion.div>
         </div>

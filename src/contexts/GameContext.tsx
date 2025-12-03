@@ -20,7 +20,7 @@ import {
   getTotalIdleProduction,
   getWeaponDamageAtLevel,
 } from '@/lib/game/formulas'
-import { AUTO_SAVE_INTERVAL_MS } from '@/lib/game/constants'
+import { AUTO_SAVE_INTERVAL_MS, BASE_DAMAGE } from '@/lib/game/constants'
 
 // ============================================
 // STATE TYPES
@@ -75,10 +75,11 @@ type GameAction =
   | { type: 'REMOVE_DAMAGE_NUMBER'; payload: string }
   | { type: 'UPDATE_CURRENCIES'; payload: { scrap?: number; dataPoints?: number; coreFragments?: number } }
   | { type: 'BUY_ITEM'; payload: { item: InventoryItem } }
+  | { type: 'PURCHASE_COMPLETE'; payload: { item: InventoryItem; newScrap: number; newData: number } }
   | { type: 'EQUIP_ITEM'; payload: { itemId: number; type: 'weapon' | 'armor' | 'accessory' } }
   | { type: 'UPGRADE_WEAPON'; payload: { itemId: number } }
   | { type: 'BUY_MACHINE'; payload: { machineType: MachineType } }
-  | { type: 'BUY_UPGRADE'; payload: { upgradeType: string; isPermanent: boolean } }
+  | { type: 'BUY_UPGRADE'; payload: { upgradeType: string; isPermanent: boolean; newLevel: number } }
   | { type: 'PRESTIGE' }
   | { type: 'TICK_IDLE' }
   | { type: 'DISMISS_WELCOME_BACK' }
@@ -371,6 +372,65 @@ function gameReducer(state: GameContextState, action: GameAction): GameContextSt
       return { ...state, inventory: newInventory }
     }
 
+    case 'PURCHASE_COMPLETE': {
+      const { item, newScrap, newData } = action.payload
+
+      // Update currencies first
+      const updatedGameState = {
+        ...state.gameState,
+        scrap: newScrap,
+        dataPoints: newData,
+      }
+
+      // For consumables, activate the effect immediately and DON'T add to inventory
+      if (item.type === 'consumable' && item.effectDuration > 0) {
+        const effectTypeMap: Record<string, ActiveEffect['type']> = {
+          'Overclock Boost': 'damage_boost',
+          'Auto-Tap Bot': 'auto_tap',
+          'Data Burst': 'data_boost',
+          'Scrap Storm': 'scrap_boost',
+          'Lucky Strike': 'crit_boost',
+          'Jackpot Module': 'reward_boost',
+        }
+
+        const effectType = effectTypeMap[item.name]
+        if (effectType) {
+          const newEffect: ActiveEffect = {
+            type: effectType,
+            value: item.effectValue,
+            endsAt: Date.now() + item.effectDuration * 1000,
+          }
+          return {
+            ...state,
+            gameState: updatedGameState,
+            activeEffects: [...state.activeEffects, newEffect],
+          }
+        }
+        // Unknown consumable, just update currencies
+        return { ...state, gameState: updatedGameState }
+      }
+
+      // For non-consumables, add to inventory
+      const existingItem = state.inventory.find(i => i.id === item.id)
+      let newInventory: InventoryItem[]
+
+      if (existingItem) {
+        newInventory = state.inventory.map(i =>
+          i.id === item.id
+            ? { ...i, quantity: i.quantity + 1 }
+            : i
+        )
+      } else {
+        newInventory = [...state.inventory, item]
+      }
+
+      return {
+        ...state,
+        gameState: updatedGameState,
+        inventory: newInventory,
+      }
+    }
+
     case 'EQUIP_ITEM': {
       const newInventory = state.inventory.map(i => ({
         ...i,
@@ -426,35 +486,67 @@ function gameReducer(state: GameContextState, action: GameAction): GameContextSt
     }
 
     case 'BUY_UPGRADE': {
+      const { upgradeType, isPermanent, newLevel } = action.payload
       const existingUpgrade = state.upgrades.find(
-        u => u.upgradeType === action.payload.upgradeType
+        u => u.upgradeType === upgradeType
       )
 
       if (existingUpgrade) {
         const newUpgrades = state.upgrades.map(u =>
-          u.upgradeType === action.payload.upgradeType
-            ? { ...u, level: u.level + 1 }
+          u.upgradeType === upgradeType
+            ? { ...u, level: newLevel }
             : u
         )
         return { ...state, upgrades: newUpgrades }
       } else {
         const newUpgrade: Upgrade = {
           id: Date.now(),
-          upgradeType: action.payload.upgradeType,
-          level: 1,
-          isPermanent: action.payload.isPermanent,
+          upgradeType,
+          level: newLevel,
+          isPermanent,
         }
         return { ...state, upgrades: [...state.upgrades, newUpgrade] }
       }
     }
 
     case 'TICK_IDLE': {
+      const now = Date.now()
       const { scrap, data, dps } = getTotalIdleProduction(state.machines, state.upgrades)
 
-      // Apply DPS to boss
+      // Calculate auto-tap damage from Auto-Tap Bot effect
+      let autoTapDamage = 0
+      const autoTapEffect = state.activeEffects.find(
+        e => e.type === 'auto_tap' && e.endsAt > now
+      )
+      if (autoTapEffect) {
+        // Get equipped weapon damage
+        const equippedWeapon = state.inventory.find(
+          i => i.id === state.gameState.equippedWeaponId && i.type === 'weapon'
+        )
+        const weaponDamage = equippedWeapon
+          ? getWeaponDamageAtLevel(equippedWeapon.damageBonus, equippedWeapon.upgradeLevel)
+          : 0
+
+        // Get tap power upgrade
+        const tapPowerLevel = state.upgrades.find(u => u.upgradeType === 'tap_power')?.level ?? 0
+        const tapPowerMult = 1 + tapPowerLevel * 0.1
+
+        // Get permanent damage upgrade
+        const permDamageLevel = state.upgrades.find(u => u.upgradeType === 'perm_starting_damage')?.level ?? 0
+        const permDamageMult = 1 + permDamageLevel * 0.25
+
+        // Base damage calculation (similar to TAP action but without crits)
+        const baseDamage = (BASE_DAMAGE + weaponDamage) * tapPowerMult * permDamageMult
+
+        // Auto-tap effect value = taps per second
+        autoTapDamage = Math.floor(baseDamage * autoTapEffect.value)
+      }
+
+      // Apply DPS from machines + auto-tap to boss
+      const totalDps = dps + autoTapDamage
       let newBossHp = state.boss.hp
-      if (dps > 0) {
-        newBossHp = Math.max(0, state.boss.hp - dps)
+      if (totalDps > 0) {
+        newBossHp = Math.max(0, state.boss.hp - totalDps)
       }
 
       return {
@@ -465,6 +557,8 @@ function gameReducer(state: GameContextState, action: GameAction): GameContextSt
           scrap: state.gameState.scrap + scrap,
           dataPoints: state.gameState.dataPoints + data,
           currentBossHp: newBossHp,
+          totalDamageDealt: state.gameState.totalDamageDealt + autoTapDamage,
+          totalTaps: state.gameState.totalTaps + (autoTapEffect ? Math.floor(autoTapEffect.value) : 0),
         },
         prestigeStats: {
           ...state.prestigeStats,
@@ -478,10 +572,15 @@ function gameReducer(state: GameContextState, action: GameAction): GameContextSt
       // Reset temporary state, keep permanent upgrades
       const permUpgrades = state.upgrades.filter(u => u.isPermanent)
 
+      // Calculate starting scrap from permanent upgrade (+1000 scrap per level)
+      const startingScrapLevel = state.upgrades.find(u => u.upgradeType === 'perm_starting_scrap')?.level ?? 0
+      const startingScrap = startingScrapLevel * 1000
+
       return {
         ...state,
         gameState: {
           ...initialGameState,
+          scrap: startingScrap,
           coreFragments: state.gameState.coreFragments,
         },
         boss: getBossInfo(1),
@@ -613,13 +712,21 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const idleIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const scheduledRemovals = useRef<Set<string>>(new Set())
+  const purchaseInProgressRef = useRef(false)
+  const lastDefeatedStageRef = useRef(0)
 
-  // Check for boss defeat
+  // Check for boss defeat - with guard to prevent multiple dispatches
   useEffect(() => {
-    if (state.boss.hp <= 0 && state.isAuthenticated) {
+    if (
+      state.boss.hp <= 0 &&
+      state.isAuthenticated &&
+      state.gameState.currentStage > lastDefeatedStageRef.current
+    ) {
+      // Mark this stage as being processed to prevent duplicate dispatches
+      lastDefeatedStageRef.current = state.gameState.currentStage
       dispatch({ type: 'BOSS_DEFEATED' })
     }
-  }, [state.boss.hp, state.isAuthenticated])
+  }, [state.boss.hp, state.isAuthenticated, state.gameState.currentStage])
 
   // Remove damage numbers after animation
   useEffect(() => {
@@ -710,6 +817,13 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const handleBeforeUnload = () => {
       if (!state.isAuthenticated) return
+
+      // Don't save stale state if a purchase is in progress
+      // Let the server's state (which has the completed transaction) be the source of truth
+      if (purchaseInProgressRef.current) {
+        console.log('Skipping beforeunload save - purchase in progress')
+        return
+      }
 
       const sessionToken = localStorage.getItem('sessionToken')
       if (!sessionToken) return
@@ -826,6 +940,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const buyItem = useCallback(async (itemId: number): Promise<boolean> => {
+    purchaseInProgressRef.current = true
     try {
       const sessionToken = localStorage.getItem('sessionToken')
       const response = await fetch('/api/shop/buy', {
@@ -837,19 +952,37 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         body: JSON.stringify({ itemId }),
       })
 
-      if (response.ok) {
-        const data = await response.json()
-        dispatch({ type: 'BUY_ITEM', payload: { item: data.item } })
-        dispatch({
-          type: 'UPDATE_CURRENCIES',
-          payload: { scrap: data.newScrap, dataPoints: data.newData },
-        })
-        return true
+      if (!response.ok) {
+        return false
       }
-      return false
+
+      // Parse response with error handling
+      let data
+      try {
+        data = await response.json()
+      } catch (parseError) {
+        // API succeeded but response parsing failed
+        // Force reload to get correct state from server
+        console.error('Response parsing failed after successful purchase:', parseError)
+        window.location.reload()
+        return false
+      }
+
+      // Single atomic dispatch to update both inventory and currencies
+      dispatch({
+        type: 'PURCHASE_COMPLETE',
+        payload: {
+          item: data.item,
+          newScrap: data.newScrap,
+          newData: data.newData,
+        },
+      })
+      return true
     } catch (error) {
       console.error('Buy failed:', error)
       return false
+    } finally {
+      purchaseInProgressRef.current = false
     }
   }, [])
 
@@ -960,7 +1093,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
       if (response.ok) {
         const data = await response.json()
-        dispatch({ type: 'BUY_UPGRADE', payload: { upgradeType, isPermanent } })
+        dispatch({ type: 'BUY_UPGRADE', payload: { upgradeType, isPermanent, newLevel: data.newLevel } })
         dispatch({
           type: 'UPDATE_CURRENCIES',
           payload: {

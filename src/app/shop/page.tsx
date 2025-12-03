@@ -7,6 +7,7 @@ import { useGame } from '@/contexts/GameContext'
 import { ShoppingBag, Sword, Shield, Gem, Beaker, Lock, Check, Sparkles } from 'lucide-react'
 import { formatNumber } from '@/lib/game/formulas'
 import { cn } from '@/lib/utils'
+import { toast } from 'sonner'
 
 interface ShopItem {
   id: number
@@ -102,9 +103,14 @@ export default function ShopPage() {
     if (success) {
       // For consumables, redirect to fight page to use the effect
       if (item.type === 'consumable') {
+        toast.success(`${item.name} activated!`, {
+          description: 'Effect is now active. Redirecting to fight...',
+        })
         router.push('/')
         return
       }
+
+      toast.success(`Purchased ${item.name}!`)
 
       // Update local state for non-consumables
       setItems((prev) => {
@@ -116,6 +122,10 @@ export default function ShopPage() {
             i.id === item.id ? { ...i, owned: true } : i
           ),
         }
+      })
+    } else {
+      toast.error('Purchase failed', {
+        description: 'Please check your balance and try again.',
       })
     }
     setPurchasing(null)
