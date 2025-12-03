@@ -936,7 +936,7 @@ export function Boss3D({ stage, isHit, isDead, hpPercent }: Boss3DProps) {
   }
 
   return (
-    <div className="w-full h-80 relative">
+    <div className="w-full h-56 relative">
       <Canvas
         camera={{ position: [0, 1, 7], fov: 50 }}
         gl={{ antialias: true, alpha: true }}

@@ -64,8 +64,9 @@ model GameState {
   totalDamageDealt BigInt @default(0) @map("total_damage_dealt")
 
   // Equipped items
-  equippedWeaponId Int? @map("equipped_weapon_id")
-  equippedArmorId  Int? @map("equipped_armor_id")
+  equippedWeaponId    Int? @map("equipped_weapon_id")
+  equippedArmorId     Int? @map("equipped_armor_id")
+  equippedAccessoryId Int? @map("equipped_accessory_id")
 
   // Relations
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)

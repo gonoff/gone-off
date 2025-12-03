@@ -97,7 +97,11 @@ export function getBossInfo(stage: number): Boss {
 export function calculateTapDamage(
   equippedWeaponDamage: number,
   upgrades: Upgrade[],
-  activeEffects: { damageBoost?: number } = {}
+  activeEffects: {
+    damageBoost?: number
+    equipmentCritBonus?: number
+    forceCrit?: boolean
+  } = {}
 ): { damage: number; isCritical: boolean } {
   // Get upgrade levels
   const tapPowerLevel = upgrades.find(u => u.upgradeType === 'tap_power')?.level ?? 0
@@ -110,9 +114,10 @@ export function calculateTapDamage(
   const permDamageMult = 1 + (permDamageLevel * 0.25)
   const effectMult = activeEffects.damageBoost ?? 1
 
-  // Calculate crit
-  const critChance = BASE_CRIT_CHANCE + (critChanceLevel * 0.01)
-  const isCritical = Math.random() < critChance
+  // Calculate crit - include equipment bonus (as percentage, e.g., 2 = +2%)
+  const equipCritBonus = (activeEffects.equipmentCritBonus ?? 0) / 100
+  const critChance = BASE_CRIT_CHANCE + (critChanceLevel * 0.01) + equipCritBonus
+  const isCritical = activeEffects.forceCrit || Math.random() < critChance
   const critMult = isCritical ? BASE_CRIT_MULTIPLIER + (critDamageLevel * 0.10) : 1
 
   // Final damage

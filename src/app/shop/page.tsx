@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useGame } from '@/contexts/GameContext'
 import { ShoppingBag, Sword, Shield, Gem, Beaker, Lock, Check, Sparkles } from 'lucide-react'
@@ -66,6 +67,7 @@ const tierGlows: Record<number, string> = {
 }
 
 export default function ShopPage() {
+  const router = useRouter()
   const { gameState, inventory, buyItem, equipItem } = useGame()
   const [items, setItems] = useState<CategorizedItems | null>(null)
   const [activeCategory, setActiveCategory] = useState<Category>('weapons')
@@ -98,11 +100,16 @@ export default function ShopPage() {
 
     const success = await buyItem(item.id)
     if (success) {
-      // Update local state
+      // For consumables, redirect to fight page to use the effect
+      if (item.type === 'consumable') {
+        router.push('/')
+        return
+      }
+
+      // Update local state for non-consumables
       setItems((prev) => {
         if (!prev) return prev
         const category = `${item.type}s` as Category
-        if (category === 'consumables') return prev
         return {
           ...prev,
           [category]: prev[category].map((i) =>
@@ -115,7 +122,7 @@ export default function ShopPage() {
   }
 
   const handleEquip = async (item: ShopItem) => {
-    if (item.type === 'weapon' || item.type === 'armor') {
+    if (item.type === 'weapon' || item.type === 'armor' || item.type === 'accessory') {
       await equipItem(item.id, item.type)
     }
   }

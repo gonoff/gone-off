@@ -218,6 +218,15 @@ async function main() {
       costData: BigInt(150),
       tier: 3,
     },
+    {
+      name: 'Jackpot Module',
+      type: ItemType.consumable,
+      description: '3x boss rewards for the next kill. One-time use.',
+      effectDuration: 300, // 5 minute window to kill a boss
+      effectValue: 3.0,
+      costData: BigInt(500),
+      tier: 4,
+    },
   ]
 
   // Insert all items

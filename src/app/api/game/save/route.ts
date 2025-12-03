@@ -57,7 +57,9 @@ export async function POST(request: NextRequest) {
           totalDamageDealt: BigInt(gameState.totalDamageDealt || 0),
           equippedWeaponId: gameState.equippedWeaponId ?? null,
           equippedArmorId: gameState.equippedArmorId ?? null,
+          equippedAccessoryId: gameState.equippedAccessoryId ?? null,
           lastSave: new Date(),
+          lastOfflineClaim: new Date(),
         },
       })
 

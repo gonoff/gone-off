@@ -75,7 +75,7 @@ type GameAction =
   | { type: 'REMOVE_DAMAGE_NUMBER'; payload: string }
   | { type: 'UPDATE_CURRENCIES'; payload: { scrap?: number; dataPoints?: number; coreFragments?: number } }
   | { type: 'BUY_ITEM'; payload: { item: InventoryItem } }
-  | { type: 'EQUIP_ITEM'; payload: { itemId: number; type: 'weapon' | 'armor' } }
+  | { type: 'EQUIP_ITEM'; payload: { itemId: number; type: 'weapon' | 'armor' | 'accessory' } }
   | { type: 'UPGRADE_WEAPON'; payload: { itemId: number } }
   | { type: 'BUY_MACHINE'; payload: { machineType: MachineType } }
   | { type: 'BUY_UPGRADE'; payload: { upgradeType: string; isPermanent: boolean } }
@@ -104,6 +104,7 @@ const initialGameState: ClientGameState = {
   totalDamageDealt: 0,
   equippedWeaponId: null,
   equippedArmorId: null,
+  equippedAccessoryId: null,
 }
 
 const initialPrestigeStats: PrestigeStats = {
@@ -174,12 +175,39 @@ function gameReducer(state: GameContextState, action: GameAction): GameContextSt
         ? getWeaponDamageAtLevel(equippedWeapon.damageBonus, equippedWeapon.upgradeLevel)
         : 0
 
+      // Get equipped armor and accessory bonuses
+      const equippedArmor = state.inventory.find(
+        i => i.id === state.gameState.equippedArmorId && i.type === 'armor'
+      )
+      const equippedAccessory = state.inventory.find(
+        i => i.id === state.gameState.equippedAccessoryId && i.type === 'accessory'
+      )
+
+      // Calculate total equipment damage bonus
+      const armorDamageBonus = equippedArmor?.damageBonus ?? 0
+      const accessoryDamageBonus = equippedAccessory?.damageBonus ?? 0
+      const totalWeaponDamage = weaponDamage + armorDamageBonus + accessoryDamageBonus
+
+      // Calculate equipment crit chance bonus
+      const armorCritBonus = equippedArmor?.critChanceBonus ?? 0
+      const accessoryCritBonus = equippedAccessory?.critChanceBonus ?? 0
+      const equipmentCritBonus = armorCritBonus + accessoryCritBonus
+
       // Get active damage boost
+      const now = Date.now()
       const damageBoost = state.activeEffects
-        .filter(e => e.type === 'damage_boost' && e.endsAt > Date.now())
+        .filter(e => e.type === 'damage_boost' && e.endsAt > now)
         .reduce((mult, e) => mult * e.value, 1)
 
-      const { damage, isCritical } = calculateTapDamage(weaponDamage, state.upgrades, { damageBoost })
+      // Get active crit boost (forces 100% crit)
+      const hasCritBoost = state.activeEffects
+        .some(e => e.type === 'crit_boost' && e.endsAt > now)
+
+      const { damage, isCritical } = calculateTapDamage(totalWeaponDamage, state.upgrades, {
+        damageBoost,
+        equipmentCritBonus,
+        forceCrit: hasCritBoost,
+      })
 
       const newBossHp = Math.max(0, state.boss.hp - damage)
       const damageId = `${Date.now()}-${Math.random()}`
@@ -215,14 +243,38 @@ function gameReducer(state: GameContextState, action: GameAction): GameContextSt
       const dropBonus = state.upgrades.find(u => u.upgradeType === 'drop_rate')?.level ?? 0
       const dropMult = 1 + (dropBonus * 0.05)
 
-      // Check for active reward boost from Data Surge skill
+      // Get equipped armor and accessory for resource bonuses
+      const equippedArmor = state.inventory.find(
+        i => i.id === state.gameState.equippedArmorId && i.type === 'armor'
+      )
+      const equippedAccessory = state.inventory.find(
+        i => i.id === state.gameState.equippedAccessoryId && i.type === 'accessory'
+      )
+
+      // Equipment resource bonuses (percentages)
+      const armorScrapBonus = (equippedArmor?.scrapBonus ?? 0) / 100
+      const armorDataBonus = (equippedArmor?.dataBonus ?? 0) / 100
+      const accessoryScrapBonus = (equippedAccessory?.scrapBonus ?? 0) / 100
+      const accessoryDataBonus = (equippedAccessory?.dataBonus ?? 0) / 100
+      const equipScrapMult = 1 + armorScrapBonus + accessoryScrapBonus
+      const equipDataMult = 1 + armorDataBonus + accessoryDataBonus
+
+      // Check for active effects
       const now = Date.now()
       const rewardBoost = state.activeEffects
         .filter(e => e.type === 'reward_boost' && e.endsAt > now)
         .reduce((mult, e) => mult * e.value, 1)
 
-      const scrapGain = Math.floor(rewards.scrap * dropMult * rewardBoost)
-      const dataGain = Math.floor(rewards.data * dropMult * rewardBoost)
+      // Check for scrap/data boost effects from consumables
+      const scrapBoost = state.activeEffects
+        .filter(e => e.type === 'scrap_boost' && e.endsAt > now)
+        .reduce((mult, e) => mult * e.value, 1)
+      const dataBoost = state.activeEffects
+        .filter(e => e.type === 'data_boost' && e.endsAt > now)
+        .reduce((mult, e) => mult * e.value, 1)
+
+      const scrapGain = Math.floor(rewards.scrap * dropMult * equipScrapMult * rewardBoost * scrapBoost)
+      const dataGain = Math.floor(rewards.data * dropMult * equipDataMult * rewardBoost * dataBoost)
 
       const nextStage = state.gameState.currentStage + 1
       const newBoss = getBossInfo(nextStage)
@@ -272,17 +324,48 @@ function gameReducer(state: GameContextState, action: GameAction): GameContextSt
       }
 
     case 'BUY_ITEM': {
-      const existingItem = state.inventory.find(i => i.id === action.payload.item.id)
+      const item = action.payload.item
+
+      // For consumables, activate the effect immediately and DON'T add to inventory
+      if (item.type === 'consumable' && item.effectDuration > 0) {
+        // Map item name to effect type (using description keywords as fallback)
+        const effectTypeMap: Record<string, ActiveEffect['type']> = {
+          'Overclock Boost': 'damage_boost',
+          'Auto-Tap Bot': 'auto_tap',
+          'Data Burst': 'data_boost',
+          'Scrap Storm': 'scrap_boost',
+          'Lucky Strike': 'crit_boost',
+          'Jackpot Module': 'reward_boost',
+        }
+
+        const effectType = effectTypeMap[item.name]
+        if (effectType) {
+          const newEffect: ActiveEffect = {
+            type: effectType,
+            value: item.effectValue,
+            endsAt: Date.now() + item.effectDuration * 1000,
+          }
+          return {
+            ...state,
+            activeEffects: [...state.activeEffects, newEffect],
+          }
+        }
+        // Unknown consumable, just return state without adding to inventory
+        return state
+      }
+
+      // For non-consumables, add to inventory
+      const existingItem = state.inventory.find(i => i.id === item.id)
       let newInventory: InventoryItem[]
 
       if (existingItem) {
         newInventory = state.inventory.map(i =>
-          i.id === action.payload.item.id
+          i.id === item.id
             ? { ...i, quantity: i.quantity + 1 }
             : i
         )
       } else {
-        newInventory = [...state.inventory, action.payload.item]
+        newInventory = [...state.inventory, item]
       }
 
       return { ...state, inventory: newInventory }
@@ -296,9 +379,14 @@ function gameReducer(state: GameContextState, action: GameAction): GameContextSt
           : i.type === action.payload.type ? false : i.isEquipped,
       }))
 
-      const equippedId = action.payload.type === 'weapon'
-        ? { equippedWeaponId: action.payload.itemId }
-        : { equippedArmorId: action.payload.itemId }
+      let equippedId: Partial<ClientGameState> = {}
+      if (action.payload.type === 'weapon') {
+        equippedId = { equippedWeaponId: action.payload.itemId }
+      } else if (action.payload.type === 'armor') {
+        equippedId = { equippedArmorId: action.payload.itemId }
+      } else if (action.payload.type === 'accessory') {
+        equippedId = { equippedAccessoryId: action.payload.itemId }
+      }
 
       return {
         ...state,
@@ -504,7 +592,7 @@ interface GameContextValue extends GameContextState {
   login: (username: string) => Promise<boolean>
   logout: () => void
   buyItem: (itemId: number) => Promise<boolean>
-  equipItem: (itemId: number, type: 'weapon' | 'armor') => Promise<boolean>
+  equipItem: (itemId: number, type: 'weapon' | 'armor' | 'accessory') => Promise<boolean>
   upgradeWeapon: (itemId: number) => Promise<boolean>
   buyMachine: (machineType: MachineType) => Promise<boolean>
   buyUpgrade: (upgradeType: string, isPermanent: boolean) => Promise<boolean>
@@ -561,6 +649,41 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     }
   }, [state.isAuthenticated, state.machines.length])
 
+  // Save game function with retry
+  const saveGame = useCallback(async (retries = 2): Promise<boolean> => {
+    const sessionToken = localStorage.getItem('sessionToken')
+    if (!sessionToken) return false
+
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const response = await fetch('/api/game/save', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${sessionToken}`,
+          },
+          body: JSON.stringify({ gameState: state.gameState }),
+        })
+
+        if (response.ok) {
+          return true
+        }
+        // If server error, retry
+        if (response.status >= 500 && attempt < retries) {
+          await new Promise(resolve => setTimeout(resolve, 1000))
+          continue
+        }
+        return false
+      } catch (error) {
+        console.error(`Save attempt ${attempt + 1} failed:`, error)
+        if (attempt < retries) {
+          await new Promise(resolve => setTimeout(resolve, 1000))
+        }
+      }
+    }
+    return false
+  }, [state.gameState])
+
   // Auto-save
   useEffect(() => {
     if (state.isAuthenticated && !state.isLoading) {
@@ -569,20 +692,9 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       }
 
       saveTimeoutRef.current = setTimeout(async () => {
-        try {
-          const sessionToken = localStorage.getItem('sessionToken')
-          if (!sessionToken) return
-
-          await fetch('/api/game/save', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${sessionToken}`,
-            },
-            body: JSON.stringify({ gameState: state.gameState }),
-          })
-        } catch (error) {
-          console.error('Auto-save failed:', error)
+        const success = await saveGame()
+        if (!success) {
+          console.error('Auto-save failed after retries')
         }
       }, AUTO_SAVE_INTERVAL_MS)
     }
@@ -592,7 +704,31 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         clearTimeout(saveTimeoutRef.current)
       }
     }
-  }, [state.gameState, state.isAuthenticated, state.isLoading])
+  }, [state.gameState, state.isAuthenticated, state.isLoading, saveGame])
+
+  // Save on page close/refresh
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (!state.isAuthenticated) return
+
+      const sessionToken = localStorage.getItem('sessionToken')
+      if (!sessionToken) return
+
+      // Use synchronous XHR for reliable save on page close (only way to send auth header)
+      const xhr = new XMLHttpRequest()
+      xhr.open('POST', '/api/game/save', false) // false = synchronous
+      xhr.setRequestHeader('Content-Type', 'application/json')
+      xhr.setRequestHeader('Authorization', `Bearer ${sessionToken}`)
+      try {
+        xhr.send(JSON.stringify({ gameState: state.gameState }))
+      } catch {
+        // Ignore errors on page close
+      }
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [state.isAuthenticated, state.gameState])
 
   // Load game on mount
   useEffect(() => {
@@ -717,7 +853,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
-  const equipItem = useCallback(async (itemId: number, type: 'weapon' | 'armor'): Promise<boolean> => {
+  const equipItem = useCallback(async (itemId: number, type: 'weapon' | 'armor' | 'accessory'): Promise<boolean> => {
     try {
       // Find the inventory item to get its inventoryId
       const inventoryItem = state.inventory.find(i => i.id === itemId)

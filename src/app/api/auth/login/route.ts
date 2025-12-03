@@ -124,6 +124,7 @@ export async function POST(request: NextRequest) {
             totalDamageDealt: user.gameState.totalDamageDealt,
             equippedWeaponId: user.gameState.equippedWeaponId,
             equippedArmorId: user.gameState.equippedArmorId,
+            equippedAccessoryId: user.gameState.equippedAccessoryId,
           }
         : null,
       inventory: user.inventory.map((inv) => ({

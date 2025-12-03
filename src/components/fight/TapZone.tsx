@@ -58,7 +58,7 @@ export function TapZone({ onTap, disabled = false, comboActive = false }: TapZon
   return (
     <motion.div
       ref={containerRef}
-      className={`relative w-full h-40 rounded-2xl border-2 overflow-hidden
+      className={`relative w-full h-28 rounded-2xl border-2 overflow-hidden
                  bg-gradient-to-b from-primary/10 via-primary/5 to-transparent cursor-pointer
                  transition-all duration-150 touch-manipulation select-none
                  ${comboActive
@@ -104,7 +104,7 @@ export function TapZone({ onTap, disabled = false, comboActive = false }: TapZon
       {/* Center crosshair */}
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
         <motion.div
-          className="relative w-24 h-24"
+          className="relative w-20 h-20"
           animate={comboActive ? { rotate: 360 } : {}}
           transition={{ duration: 4, repeat: Infinity, ease: 'linear' }}
         >

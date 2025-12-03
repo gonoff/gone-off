@@ -44,8 +44,8 @@ export async function POST(request: NextRequest) {
 
     const itemType = inventoryItem.item.type
 
-    // Only weapons and armor can be equipped
-    if (itemType !== 'weapon' && itemType !== 'armor') {
+    // Only weapons, armor, and accessories can be equipped
+    if (itemType !== 'weapon' && itemType !== 'armor' && itemType !== 'accessory') {
       return NextResponse.json(
         { error: 'This item type cannot be equipped' },
         { status: 400 }
@@ -71,8 +71,10 @@ export async function POST(request: NextRequest) {
         // Just unequip - set the slot to null
         if (itemType === 'weapon') {
           gameStateUpdate = { equippedWeaponId: null }
-        } else {
+        } else if (itemType === 'armor') {
           gameStateUpdate = { equippedArmorId: null }
+        } else {
+          gameStateUpdate = { equippedAccessoryId: null }
         }
       } else {
         // Equip the new item
@@ -84,8 +86,10 @@ export async function POST(request: NextRequest) {
 
         if (itemType === 'weapon') {
           gameStateUpdate = { equippedWeaponId: inventoryItem.item.id }
-        } else {
+        } else if (itemType === 'armor') {
           gameStateUpdate = { equippedArmorId: inventoryItem.item.id }
+        } else {
+          gameStateUpdate = { equippedAccessoryId: inventoryItem.item.id }
         }
       }
 
@@ -111,6 +115,7 @@ export async function POST(request: NextRequest) {
       },
       equippedWeaponId: result.updatedGameState.equippedWeaponId,
       equippedArmorId: result.updatedGameState.equippedArmorId,
+      equippedAccessoryId: result.updatedGameState.equippedAccessoryId,
     })
 
     return NextResponse.json(responseData)

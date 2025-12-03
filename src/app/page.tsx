@@ -26,7 +26,7 @@ const Boss3D = dynamic(
 
 function BossPlaceholder() {
   return (
-    <div className="w-full h-72 flex items-center justify-center">
+    <div className="w-full h-56 flex items-center justify-center">
       <div className="w-24 h-24 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
     </div>
   )
@@ -279,9 +279,9 @@ export default function FightPage() {
       <ScreenEffects shake={screenShake} flash={screenFlash} stageClear={stageClear} />
       <WelcomeBackModal />
 
-      <div className="h-full flex flex-col p-4 relative z-10">
+      <div className="h-full flex flex-col p-2 relative z-10">
         {/* Stage Info */}
-        <div className="text-center mb-2">
+        <div className="text-center mb-1">
           <div className="flex items-center justify-center gap-2">
             <Badge
               variant="outline"
@@ -355,7 +355,7 @@ export default function FightPage() {
         </div>
 
         {/* Boss Info */}
-        <div className="text-center mb-2 space-y-0.5">
+        <div className="text-center mb-1 space-y-0">
           <motion.h2
             key={boss.name}
             initial={{ opacity: 0, y: -10 }}
@@ -376,7 +376,7 @@ export default function FightPage() {
         </div>
 
         {/* HP Bar */}
-        <div className="mb-3">
+        <div className="mb-2">
           <HPBar current={boss.hp} max={boss.maxHp} />
         </div>
 
@@ -384,12 +384,12 @@ export default function FightPage() {
         <SkillBar skills={skillsWithCooldowns} onUseSkill={handleUseSkill} />
 
         {/* Tap Zone */}
-        <div className="flex-1 min-h-0 flex flex-col justify-center mt-2">
+        <div className="flex-1 min-h-0 flex flex-col justify-center mt-1">
           <TapZone onTap={handleTap} comboActive={combo >= 5} />
         </div>
 
         {/* Stats Bar */}
-        <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+        <div className="mt-2 grid grid-cols-3 gap-2 text-center">
           <motion.div
             className="bg-muted/40 rounded-xl p-2 border border-border/30"
             animate={activeBuffs.damageBoost > 1 ? { borderColor: ['#facc15', '#fbbf24', '#facc15'] } : {}}

@@ -21,6 +21,7 @@ export interface GameState {
   totalDamageDealt: bigint
   equippedWeaponId: number | null
   equippedArmorId: number | null
+  equippedAccessoryId: number | null
 }
 
 export interface ClientGameState {
@@ -36,6 +37,7 @@ export interface ClientGameState {
   totalDamageDealt: number
   equippedWeaponId: number | null
   equippedArmorId: number | null
+  equippedAccessoryId: number | null
 }
 
 export type ItemType = 'weapon' | 'armor' | 'accessory' | 'consumable'

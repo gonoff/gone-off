@@ -49,8 +49,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Calculate upgrade cost using base scrap cost
-    const baseCost = Number(inventoryItem.item.costScrap)
+    // Calculate upgrade cost using a fixed base (not item cost, for balance)
+    // Base cost is 500 scrap, scaling with weapon tier and upgrade level
+    const tierMultiplier = Math.pow(2, inventoryItem.item.tier - 1) // 1x, 2x, 4x, 8x, etc.
+    const baseCost = 500 * tierMultiplier
     const upgradeCost = getWeaponUpgradeCost(baseCost, inventoryItem.upgradeLevel)
 
     // Check currency using BigInt comparison to avoid precision loss
