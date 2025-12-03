@@ -1035,6 +1035,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
   const buyItem = useCallback(async (itemId: number): Promise<boolean> => {
     purchaseInProgressRef.current = true
+    let apiSucceeded = false
+
     try {
       const sessionToken = localStorage.getItem('sessionToken')
       const response = await fetch('/api/shop/buy', {
@@ -1047,32 +1049,46 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       })
 
       if (!response.ok) {
-        return false
+        return false  // API genuinely failed
       }
+
+      // API succeeded - purchase is DONE on the server
+      apiSucceeded = true
 
       // Parse response with error handling
       let data
       try {
         data = await response.json()
       } catch (parseError) {
-        // API succeeded but response parsing failed
-        // Force reload to get correct state from server
-        console.error('Response parsing failed after successful purchase:', parseError)
+        console.error('Parse error after successful purchase - reloading:', parseError)
         window.location.reload()
-        return false
+        return true  // Purchase succeeded on server!
       }
 
-      // Single atomic dispatch to update both inventory and currencies
-      dispatch({
-        type: 'PURCHASE_COMPLETE',
-        payload: {
-          item: data.item,
-          newScrap: data.newScrap,
-          newData: data.newData,
-        },
-      })
+      // Apply to client state with error handling
+      try {
+        dispatch({
+          type: 'PURCHASE_COMPLETE',
+          payload: {
+            item: data.item,
+            newScrap: data.newScrap,
+            newData: data.newData,
+          },
+        })
+      } catch (dispatchError) {
+        console.error('Dispatch error after successful purchase - reloading:', dispatchError)
+        window.location.reload()
+        return true  // Purchase succeeded on server!
+      }
+
       return true
     } catch (error) {
+      // Only show "failed" if API didn't succeed
+      if (apiSucceeded) {
+        console.error('Error after successful purchase - reloading:', error)
+        window.location.reload()
+        return true  // Purchase succeeded on server!
+      }
       console.error('Buy failed:', error)
       return false
     } finally {
@@ -1112,9 +1128,11 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
   const upgradeWeapon = useCallback(async (itemId: number): Promise<boolean> => {
     purchaseInProgressRef.current = true
+    let apiSucceeded = false
+
     try {
       // Find the inventory item to get its inventoryId
-      const inventoryItem = state.inventory.find(i => i.id === itemId)
+      const inventoryItem = state.inventory?.find(i => i.id === itemId)
       if (!inventoryItem) {
         console.error('Item not found in inventory')
         return false
@@ -1131,30 +1149,45 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       })
 
       if (!response.ok) {
-        return false
+        return false  // API genuinely failed
       }
+
+      // API succeeded - upgrade is DONE on the server
+      apiSucceeded = true
 
       // Parse response with error handling
       let data
       try {
         data = await response.json()
       } catch (parseError) {
-        console.error('Response parsing failed after successful weapon upgrade:', parseError)
+        console.error('Parse error after successful weapon upgrade - reloading:', parseError)
         window.location.reload()
-        return false
+        return true  // Upgrade succeeded on server!
       }
 
-      // Single atomic dispatch to update both weapon level and currencies
-      dispatch({
-        type: 'WEAPON_UPGRADE_COMPLETE',
-        payload: {
-          itemId,
-          newLevel: data.item.upgradeLevel,
-          newScrap: data.newScrap,
-        },
-      })
+      // Apply to client state with error handling
+      try {
+        dispatch({
+          type: 'WEAPON_UPGRADE_COMPLETE',
+          payload: {
+            itemId,
+            newLevel: data.item.upgradeLevel,
+            newScrap: data.newScrap,
+          },
+        })
+      } catch (dispatchError) {
+        console.error('Dispatch error after successful weapon upgrade - reloading:', dispatchError)
+        window.location.reload()
+        return true  // Upgrade succeeded on server!
+      }
+
       return true
     } catch (error) {
+      if (apiSucceeded) {
+        console.error('Error after successful weapon upgrade - reloading:', error)
+        window.location.reload()
+        return true  // Upgrade succeeded on server!
+      }
       console.error('Upgrade failed:', error)
       return false
     } finally {
@@ -1164,6 +1197,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
   const buyMachine = useCallback(async (machineType: MachineType): Promise<boolean> => {
     purchaseInProgressRef.current = true
+    let apiSucceeded = false
+
     try {
       const sessionToken = localStorage.getItem('sessionToken')
       const response = await fetch('/api/machines/buy', {
@@ -1176,31 +1211,46 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       })
 
       if (!response.ok) {
-        return false
+        return false  // API genuinely failed
       }
+
+      // API succeeded - purchase is DONE on the server
+      apiSucceeded = true
 
       // Parse response with error handling
       let data
       try {
         data = await response.json()
       } catch (parseError) {
-        console.error('Response parsing failed after successful machine purchase:', parseError)
+        console.error('Parse error after successful machine purchase - reloading:', parseError)
         window.location.reload()
-        return false
+        return true  // Purchase succeeded on server!
       }
 
-      // Single atomic dispatch to update both machines and currencies
-      dispatch({
-        type: 'MACHINE_COMPLETE',
-        payload: {
-          machineType,
-          newLevel: data.newLevel,
-          newScrap: data.newScrap,
-          newData: data.newData,
-        },
-      })
+      // Apply to client state with error handling
+      try {
+        dispatch({
+          type: 'MACHINE_COMPLETE',
+          payload: {
+            machineType,
+            newLevel: data.newLevel,
+            newScrap: data.newScrap,
+            newData: data.newData,
+          },
+        })
+      } catch (dispatchError) {
+        console.error('Dispatch error after successful machine purchase - reloading:', dispatchError)
+        window.location.reload()
+        return true  // Purchase succeeded on server!
+      }
+
       return true
     } catch (error) {
+      if (apiSucceeded) {
+        console.error('Error after successful machine purchase - reloading:', error)
+        window.location.reload()
+        return true  // Purchase succeeded on server!
+      }
       console.error('Buy machine failed:', error)
       return false
     } finally {
@@ -1210,6 +1260,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
   const buyUpgrade = useCallback(async (upgradeType: string, isPermanent: boolean): Promise<boolean> => {
     purchaseInProgressRef.current = true
+    let apiSucceeded = false
+
     try {
       const sessionToken = localStorage.getItem('sessionToken')
       const response = await fetch('/api/upgrades/buy', {
@@ -1222,33 +1274,48 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       })
 
       if (!response.ok) {
-        return false
+        return false  // API genuinely failed
       }
+
+      // API succeeded - purchase is DONE on the server
+      apiSucceeded = true
 
       // Parse response with error handling
       let data
       try {
         data = await response.json()
       } catch (parseError) {
-        console.error('Response parsing failed after successful upgrade purchase:', parseError)
+        console.error('Parse error after successful upgrade purchase - reloading:', parseError)
         window.location.reload()
-        return false
+        return true  // Purchase succeeded on server!
       }
 
-      // Single atomic dispatch to update both upgrades and currencies
-      dispatch({
-        type: 'UPGRADE_COMPLETE',
-        payload: {
-          upgradeType,
-          isPermanent,
-          newLevel: data.newLevel,
-          newScrap: data.newScrap,
-          newData: data.newData,
-          newCoreFragments: data.newCoreFragments,
-        },
-      })
+      // Apply to client state with error handling
+      try {
+        dispatch({
+          type: 'UPGRADE_COMPLETE',
+          payload: {
+            upgradeType,
+            isPermanent,
+            newLevel: data.newLevel,
+            newScrap: data.newScrap,
+            newData: data.newData,
+            newCoreFragments: data.newCoreFragments,
+          },
+        })
+      } catch (dispatchError) {
+        console.error('Dispatch error after successful upgrade purchase - reloading:', dispatchError)
+        window.location.reload()
+        return true  // Purchase succeeded on server!
+      }
+
       return true
     } catch (error) {
+      if (apiSucceeded) {
+        console.error('Error after successful upgrade purchase - reloading:', error)
+        window.location.reload()
+        return true  // Purchase succeeded on server!
+      }
       console.error('Buy upgrade failed:', error)
       return false
     } finally {
