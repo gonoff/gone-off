@@ -1034,6 +1034,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const buyItem = useCallback(async (itemId: number): Promise<boolean> => {
+    console.log('[buyItem] Starting purchase for item:', itemId)
     purchaseInProgressRef.current = true
     let apiSucceeded = false
 
@@ -1048,25 +1049,32 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         body: JSON.stringify({ itemId }),
       })
 
+      console.log('[buyItem] Response status:', response.status, response.ok)
+
       if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        console.error('[buyItem] API rejected purchase:', errorData)
         return false  // API genuinely failed
       }
 
       // API succeeded - purchase is DONE on the server
       apiSucceeded = true
+      console.log('[buyItem] API succeeded, parsing response...')
 
       // Parse response with error handling
       let data
       try {
         data = await response.json()
+        console.log('[buyItem] Parsed response:', data)
       } catch (parseError) {
-        console.error('Parse error after successful purchase - reloading:', parseError)
+        console.error('[buyItem] Parse error after successful purchase - reloading:', parseError)
         window.location.reload()
         return true  // Purchase succeeded on server!
       }
 
       // Apply to client state with error handling
       try {
+        console.log('[buyItem] Dispatching PURCHASE_COMPLETE...')
         dispatch({
           type: 'PURCHASE_COMPLETE',
           payload: {
@@ -1075,8 +1083,9 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
             newData: data.newData,
           },
         })
+        console.log('[buyItem] Dispatch successful')
       } catch (dispatchError) {
-        console.error('Dispatch error after successful purchase - reloading:', dispatchError)
+        console.error('[buyItem] Dispatch error after successful purchase - reloading:', dispatchError)
         window.location.reload()
         return true  // Purchase succeeded on server!
       }
@@ -1085,11 +1094,11 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       // Only show "failed" if API didn't succeed
       if (apiSucceeded) {
-        console.error('Error after successful purchase - reloading:', error)
+        console.error('[buyItem] Error after successful purchase - reloading:', error)
         window.location.reload()
         return true  // Purchase succeeded on server!
       }
-      console.error('Buy failed:', error)
+      console.error('[buyItem] Buy failed (API did not succeed):', error)
       return false
     } finally {
       purchaseInProgressRef.current = false

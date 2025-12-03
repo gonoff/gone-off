@@ -334,6 +334,7 @@ export default function FightPage() {
           <AnimatePresence>
             {activeBuffs.damageBoost > 1 && (
               <motion.div
+                key="damage-boost"
                 initial={{ opacity: 0, x: -50 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -50 }}
@@ -345,6 +346,7 @@ export default function FightPage() {
             )}
             {activeBuffs.scrapBoost > 1 && (
               <motion.div
+                key="scrap-boost"
                 initial={{ opacity: 0, x: -50 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -50 }}
@@ -356,6 +358,7 @@ export default function FightPage() {
             )}
             {activeBuffs.dataBoost > 1 && (
               <motion.div
+                key="data-boost"
                 initial={{ opacity: 0, x: -50 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -50 }}
@@ -373,6 +376,7 @@ export default function FightPage() {
               const turretDps = Math.pow(2, autoTurret.level - 1) // Same formula as getMachineProduction
               return (
                 <motion.div
+                  key="auto-turret"
                   initial={{ opacity: 0, x: -50 }}
                   animate={{ opacity: 1, x: 0 }}
                   className="px-3 py-1.5 bg-red-500/20 border border-red-500 rounded-lg flex items-center gap-2"

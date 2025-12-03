@@ -93,7 +93,7 @@ export default function ShopPage() {
       }
     }
     fetchItems()
-  }, [])
+  }, [gameState.highestStage]) // Refetch when stage changes to update unlock status
 
   const handleBuy = async (item: ShopItem) => {
     if (purchasing) return
