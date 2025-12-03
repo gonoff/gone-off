@@ -719,6 +719,13 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
   const equipItem = useCallback(async (itemId: number, type: 'weapon' | 'armor'): Promise<boolean> => {
     try {
+      // Find the inventory item to get its inventoryId
+      const inventoryItem = state.inventory.find(i => i.id === itemId)
+      if (!inventoryItem) {
+        console.error('Item not found in inventory')
+        return false
+      }
+
       const sessionToken = localStorage.getItem('sessionToken')
       const response = await fetch('/api/game/equip', {
         method: 'POST',
@@ -726,7 +733,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${sessionToken}`,
         },
-        body: JSON.stringify({ itemId }),
+        body: JSON.stringify({ inventoryId: inventoryItem.inventoryId }),
       })
 
       if (response.ok) {
@@ -738,10 +745,17 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       console.error('Equip failed:', error)
       return false
     }
-  }, [])
+  }, [state.inventory])
 
   const upgradeWeapon = useCallback(async (itemId: number): Promise<boolean> => {
     try {
+      // Find the inventory item to get its inventoryId
+      const inventoryItem = state.inventory.find(i => i.id === itemId)
+      if (!inventoryItem) {
+        console.error('Item not found in inventory')
+        return false
+      }
+
       const sessionToken = localStorage.getItem('sessionToken')
       const response = await fetch('/api/shop/upgrade-weapon', {
         method: 'POST',
@@ -749,7 +763,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${sessionToken}`,
         },
-        body: JSON.stringify({ itemId }),
+        body: JSON.stringify({ inventoryId: inventoryItem.inventoryId }),
       })
 
       if (response.ok) {
@@ -766,7 +780,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       console.error('Upgrade failed:', error)
       return false
     }
-  }, [])
+  }, [state.inventory])
 
   const buyMachine = useCallback(async (machineType: MachineType): Promise<boolean> => {
     try {
