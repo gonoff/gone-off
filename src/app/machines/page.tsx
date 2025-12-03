@@ -8,6 +8,7 @@ import { MACHINE_CONFIGS } from '@/lib/game/constants'
 import { MachineType } from '@/lib/game/types'
 import { cn } from '@/lib/utils'
 import { useState } from 'react'
+import { toast } from 'sonner'
 
 const machineIcons: Record<MachineType, React.ReactNode> = {
   scrap_collector: <Cog className="w-8 h-8" />,
@@ -30,12 +31,20 @@ export default function MachinesPage() {
   const handleBuy = async (machineType: MachineType) => {
     if (purchasing) return
     setPurchasing(machineType)
-    await buyMachine(machineType)
+
+    const success = await buyMachine(machineType)
+    if (success) {
+      toast.success('Machine upgraded!')
+    } else {
+      toast.error('Purchase failed', {
+        description: 'Please check your balance and try again.',
+      })
+    }
     setPurchasing(null)
   }
 
   const getMachineLevel = (type: MachineType) => {
-    return machines.find((m) => m.machineType === type)?.level ?? 0
+    return machines?.find((m) => m.machineType === type)?.level ?? 0
   }
 
   const canAfford = (type: MachineType) => {

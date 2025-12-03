@@ -116,6 +116,7 @@ export default function ShopPage() {
       setItems((prev) => {
         if (!prev) return prev
         const category = `${item.type}s` as Category
+        if (!prev[category]) return prev
         return {
           ...prev,
           [category]: prev[category].map((i) =>
@@ -142,7 +143,7 @@ export default function ShopPage() {
   }
 
   const isEquipped = (item: ShopItem) => {
-    return inventory.find((i) => i.id === item.id)?.isEquipped ?? false
+    return inventory?.find((i) => i.id === item.id)?.isEquipped ?? false
   }
 
   const getItemStats = (item: ShopItem) => {
@@ -197,7 +198,7 @@ export default function ShopPage() {
       <div className="flex-1 overflow-y-auto space-y-2 pr-1 scrollbar-thin scrollbar-track-background scrollbar-thumb-primary/20">
         <AnimatePresence mode="popLayout">
           {currentItems.map((item, index) => {
-            const owned = item.owned || inventory.some((i) => i.id === item.id)
+            const owned = item.owned || (inventory?.some((i) => i.id === item.id) ?? false)
             const equipped = isEquipped(item)
             const affordable = canAfford(item)
 

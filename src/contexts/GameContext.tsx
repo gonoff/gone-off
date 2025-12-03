@@ -80,6 +80,9 @@ type GameAction =
   | { type: 'UPGRADE_WEAPON'; payload: { itemId: number } }
   | { type: 'BUY_MACHINE'; payload: { machineType: MachineType } }
   | { type: 'BUY_UPGRADE'; payload: { upgradeType: string; isPermanent: boolean; newLevel: number } }
+  | { type: 'UPGRADE_COMPLETE'; payload: { upgradeType: string; isPermanent: boolean; newLevel: number; newScrap: number; newData: number; newCoreFragments: number } }
+  | { type: 'MACHINE_COMPLETE'; payload: { machineType: MachineType; newLevel: number; newScrap: number; newData: number } }
+  | { type: 'WEAPON_UPGRADE_COMPLETE'; payload: { itemId: number; newLevel: number; newScrap: number } }
   | { type: 'PRESTIGE' }
   | { type: 'TICK_IDLE' }
   | { type: 'DISMISS_WELCOME_BACK' }
@@ -506,6 +509,77 @@ function gameReducer(state: GameContextState, action: GameAction): GameContextSt
           isPermanent,
         }
         return { ...state, upgrades: [...state.upgrades, newUpgrade] }
+      }
+    }
+
+    case 'UPGRADE_COMPLETE': {
+      const { upgradeType, isPermanent, newLevel, newScrap, newData, newCoreFragments } = action.payload
+      const existingUpgrade = state.upgrades.find(u => u.upgradeType === upgradeType)
+
+      let newUpgrades: Upgrade[]
+      if (existingUpgrade) {
+        newUpgrades = state.upgrades.map(u =>
+          u.upgradeType === upgradeType ? { ...u, level: newLevel } : u
+        )
+      } else {
+        newUpgrades = [...state.upgrades, { id: Date.now(), upgradeType, level: newLevel, isPermanent }]
+      }
+
+      return {
+        ...state,
+        gameState: {
+          ...state.gameState,
+          scrap: newScrap,
+          dataPoints: newData,
+          coreFragments: newCoreFragments,
+        },
+        upgrades: newUpgrades,
+      }
+    }
+
+    case 'MACHINE_COMPLETE': {
+      const { machineType, newLevel, newScrap, newData } = action.payload
+      const existingMachine = state.machines.find(m => m.machineType === machineType)
+
+      let newMachines: Machine[]
+      if (existingMachine) {
+        newMachines = state.machines.map(m =>
+          m.machineType === machineType ? { ...m, level: newLevel } : m
+        )
+      } else {
+        newMachines = [...state.machines, {
+          id: Date.now(),
+          machineType,
+          level: newLevel,
+          lastCollected: new Date(),
+        }]
+      }
+
+      return {
+        ...state,
+        gameState: {
+          ...state.gameState,
+          scrap: newScrap,
+          dataPoints: newData,
+        },
+        machines: newMachines,
+      }
+    }
+
+    case 'WEAPON_UPGRADE_COMPLETE': {
+      const { itemId, newLevel, newScrap } = action.payload
+
+      const newInventory = state.inventory.map(i =>
+        i.id === itemId ? { ...i, upgradeLevel: newLevel } : i
+      )
+
+      return {
+        ...state,
+        gameState: {
+          ...state.gameState,
+          scrap: newScrap,
+        },
+        inventory: newInventory,
       }
     }
 
@@ -1017,6 +1091,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   }, [state.inventory])
 
   const upgradeWeapon = useCallback(async (itemId: number): Promise<boolean> => {
+    purchaseInProgressRef.current = true
     try {
       // Find the inventory item to get its inventoryId
       const inventoryItem = state.inventory.find(i => i.id === itemId)
@@ -1035,23 +1110,40 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         body: JSON.stringify({ inventoryId: inventoryItem.inventoryId }),
       })
 
-      if (response.ok) {
-        const data = await response.json()
-        dispatch({ type: 'UPGRADE_WEAPON', payload: { itemId } })
-        dispatch({
-          type: 'UPDATE_CURRENCIES',
-          payload: { scrap: data.newScrap },
-        })
-        return true
+      if (!response.ok) {
+        return false
       }
-      return false
+
+      // Parse response with error handling
+      let data
+      try {
+        data = await response.json()
+      } catch (parseError) {
+        console.error('Response parsing failed after successful weapon upgrade:', parseError)
+        window.location.reload()
+        return false
+      }
+
+      // Single atomic dispatch to update both weapon level and currencies
+      dispatch({
+        type: 'WEAPON_UPGRADE_COMPLETE',
+        payload: {
+          itemId,
+          newLevel: data.item.upgradeLevel,
+          newScrap: data.newScrap,
+        },
+      })
+      return true
     } catch (error) {
       console.error('Upgrade failed:', error)
       return false
+    } finally {
+      purchaseInProgressRef.current = false
     }
   }, [state.inventory])
 
   const buyMachine = useCallback(async (machineType: MachineType): Promise<boolean> => {
+    purchaseInProgressRef.current = true
     try {
       const sessionToken = localStorage.getItem('sessionToken')
       const response = await fetch('/api/machines/buy', {
@@ -1063,23 +1155,41 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         body: JSON.stringify({ machineType }),
       })
 
-      if (response.ok) {
-        const data = await response.json()
-        dispatch({ type: 'BUY_MACHINE', payload: { machineType } })
-        dispatch({
-          type: 'UPDATE_CURRENCIES',
-          payload: { scrap: data.newScrap, dataPoints: data.newData },
-        })
-        return true
+      if (!response.ok) {
+        return false
       }
-      return false
+
+      // Parse response with error handling
+      let data
+      try {
+        data = await response.json()
+      } catch (parseError) {
+        console.error('Response parsing failed after successful machine purchase:', parseError)
+        window.location.reload()
+        return false
+      }
+
+      // Single atomic dispatch to update both machines and currencies
+      dispatch({
+        type: 'MACHINE_COMPLETE',
+        payload: {
+          machineType,
+          newLevel: data.newLevel,
+          newScrap: data.newScrap,
+          newData: data.newData,
+        },
+      })
+      return true
     } catch (error) {
       console.error('Buy machine failed:', error)
       return false
+    } finally {
+      purchaseInProgressRef.current = false
     }
   }, [])
 
   const buyUpgrade = useCallback(async (upgradeType: string, isPermanent: boolean): Promise<boolean> => {
+    purchaseInProgressRef.current = true
     try {
       const sessionToken = localStorage.getItem('sessionToken')
       const response = await fetch('/api/upgrades/buy', {
@@ -1091,23 +1201,38 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         body: JSON.stringify({ upgradeType }),
       })
 
-      if (response.ok) {
-        const data = await response.json()
-        dispatch({ type: 'BUY_UPGRADE', payload: { upgradeType, isPermanent, newLevel: data.newLevel } })
-        dispatch({
-          type: 'UPDATE_CURRENCIES',
-          payload: {
-            scrap: data.newScrap,
-            dataPoints: data.newData,
-            coreFragments: data.newCoreFragments,
-          },
-        })
-        return true
+      if (!response.ok) {
+        return false
       }
-      return false
+
+      // Parse response with error handling
+      let data
+      try {
+        data = await response.json()
+      } catch (parseError) {
+        console.error('Response parsing failed after successful upgrade purchase:', parseError)
+        window.location.reload()
+        return false
+      }
+
+      // Single atomic dispatch to update both upgrades and currencies
+      dispatch({
+        type: 'UPGRADE_COMPLETE',
+        payload: {
+          upgradeType,
+          isPermanent,
+          newLevel: data.newLevel,
+          newScrap: data.newScrap,
+          newData: data.newData,
+          newCoreFragments: data.newCoreFragments,
+        },
+      })
+      return true
     } catch (error) {
       console.error('Buy upgrade failed:', error)
       return false
+    } finally {
+      purchaseInProgressRef.current = false
     }
   }, [])
 

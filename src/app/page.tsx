@@ -16,7 +16,7 @@ import { formatNumber } from '@/lib/game/formulas'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { Badge } from '@/components/ui/badge'
-import { Zap, Target, Gift, Flame, Sparkles } from 'lucide-react'
+import { Zap, Target, Gift, Flame, Sparkles, Crosshair } from 'lucide-react'
 
 // Dynamic import for 3D boss (SSR disabled)
 const Boss3D = dynamic(
@@ -52,6 +52,7 @@ export default function FightPage() {
     tap,
     upgrades,
     inventory,
+    machines,
     activeEffects,
     useSkill,
   } = useGame()
@@ -364,6 +365,28 @@ export default function FightPage() {
                 <span className="text-sm font-bold text-cyan-400">{activeBuffs.dataBoost}x DATA</span>
               </motion.div>
             )}
+            {/* Auto Turret DPS Indicator */}
+            {(() => {
+              if (!machines || machines.length === 0) return null
+              const autoTurret = machines.find(m => m.machineType === 'auto_turret')
+              if (!autoTurret || autoTurret.level === 0) return null
+              const turretDps = Math.pow(2, autoTurret.level - 1) // Same formula as getMachineProduction
+              return (
+                <motion.div
+                  initial={{ opacity: 0, x: -50 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  className="px-3 py-1.5 bg-red-500/20 border border-red-500 rounded-lg flex items-center gap-2"
+                >
+                  <motion.div
+                    animate={{ scale: [1, 1.2, 1] }}
+                    transition={{ repeat: Infinity, duration: 0.5 }}
+                  >
+                    <Crosshair className="w-4 h-4 text-red-400" />
+                  </motion.div>
+                  <span className="text-sm font-bold text-red-400">{turretDps} DPS</span>
+                </motion.div>
+              )
+            })()}
           </AnimatePresence>
         </div>
 

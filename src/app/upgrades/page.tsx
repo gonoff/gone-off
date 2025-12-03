@@ -7,6 +7,7 @@ import { ArrowUp, Zap, Sparkles, Lock, Star, Infinity } from 'lucide-react'
 import { formatNumber, getUpgradeCost } from '@/lib/game/formulas'
 import { TEMP_UPGRADE_CONFIGS, PERM_UPGRADE_CONFIGS } from '@/lib/game/constants'
 import { cn } from '@/lib/utils'
+import { toast } from 'sonner'
 
 type Tab = 'temporary' | 'permanent'
 
@@ -18,12 +19,20 @@ export default function UpgradesPage() {
   const handleBuy = async (upgradeType: string, isPermanent: boolean) => {
     if (purchasing) return
     setPurchasing(upgradeType)
-    await buyUpgrade(upgradeType, isPermanent)
+
+    const success = await buyUpgrade(upgradeType, isPermanent)
+    if (success) {
+      toast.success('Upgrade purchased!')
+    } else {
+      toast.error('Purchase failed', {
+        description: 'Please check your balance and try again.',
+      })
+    }
     setPurchasing(null)
   }
 
   const getUpgradeLevel = (type: string) => {
-    return upgrades.find((u) => u.upgradeType === type)?.level ?? 0
+    return upgrades?.find((u) => u.upgradeType === type)?.level ?? 0
   }
 
   const canAfford = (type: string, isPermanent: boolean) => {
