@@ -90,16 +90,81 @@ interface GameState {
 | Action | Purpose |
 |--------|---------|
 | `SET_STATE` | Load full state from server |
+| `LOAD_GAME_DATA` | Load game with null safety checks |
 | `TAP` | Process tap damage |
 | `BOSS_DEFEATED` | Award rewards, advance stage |
-| `TICK_IDLE` | Apply per-second machine production |
-| `BUY_ITEM` | Purchase item from shop |
+| `TICK_IDLE` | Apply per-second machine production + auto-turret DPS |
+| `PURCHASE_COMPLETE` | Atomic shop purchase (item + currencies) |
+| `UPGRADE_COMPLETE` | Atomic upgrade purchase (upgrade + currencies) |
+| `MACHINE_COMPLETE` | Atomic machine purchase (machine + currencies) |
+| `WEAPON_UPGRADE_COMPLETE` | Atomic weapon upgrade (level + currencies) |
 | `EQUIP_ITEM` | Equip weapon/armor/accessory |
-| `UPGRADE_WEAPON` | Upgrade weapon level |
-| `BUY_MACHINE` | Buy/upgrade machine |
-| `BUY_UPGRADE` | Purchase upgrade |
 | `PRESTIGE` | Trigger prestige reset |
 | `COLLECT_OFFLINE` | Apply offline earnings |
+
+### Atomic Purchase Pattern
+
+All purchase operations use atomic actions to prevent race conditions:
+
+```typescript
+// Instead of two separate dispatches that can race:
+dispatch({ type: 'BUY_UPGRADE', payload: { ... } })
+dispatch({ type: 'UPDATE_CURRENCIES', payload: { ... } }) // Can fail!
+
+// Use single atomic dispatch:
+dispatch({
+  type: 'UPGRADE_COMPLETE',
+  payload: {
+    upgradeType,
+    isPermanent,
+    newLevel: data.newLevel,
+    newScrap: data.newScrap,
+    newData: data.newData,
+    newCoreFragments: data.newCoreFragments,
+  },
+})
+```
+
+### Purchase Protection
+
+Uses `purchaseInProgressRef` to prevent `beforeunload` from overwriting server state:
+
+```typescript
+const buyUpgrade = useCallback(async (...) => {
+  purchaseInProgressRef.current = true  // Block saves during purchase
+  try {
+    const response = await fetch('/api/upgrades/buy', ...)
+    // ... parse response with error handling
+    dispatch({ type: 'UPGRADE_COMPLETE', payload: { ... } })
+    return true
+  } finally {
+    purchaseInProgressRef.current = false
+  }
+}, [])
+
+// In beforeunload handler:
+if (purchaseInProgressRef.current) {
+  console.log('Skipping save - purchase in progress')
+  return  // Don't overwrite server state with stale client state
+}
+```
+
+### Null Safety in State Loading
+
+`LOAD_GAME_DATA` ensures critical state objects are never null:
+
+```typescript
+case 'LOAD_GAME_DATA': {
+  const newState = { ...state, ...action.payload }
+  // Ensure critical state objects are never null
+  if (!newState.prestigeStats) newState.prestigeStats = initialPrestigeStats
+  if (!newState.inventory) newState.inventory = []
+  if (!newState.machines) newState.machines = []
+  if (!newState.upgrades) newState.upgrades = []
+  if (!newState.activeEffects) newState.activeEffects = []
+  return newState
+}
+```
 
 ### State Flow
 

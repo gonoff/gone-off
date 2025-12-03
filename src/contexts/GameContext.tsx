@@ -394,6 +394,10 @@ function gameReducer(state: GameContextState, action: GameAction): GameContextSt
     case 'PURCHASE_COMPLETE': {
       const { item, newScrap, newData } = action.payload
 
+      // Ensure arrays are never null
+      const currentActiveEffects = state.activeEffects ?? []
+      const currentInventory = state.inventory ?? []
+
       // Update currencies first
       const updatedGameState = {
         ...state.gameState,
@@ -422,7 +426,7 @@ function gameReducer(state: GameContextState, action: GameAction): GameContextSt
           return {
             ...state,
             gameState: updatedGameState,
-            activeEffects: [...state.activeEffects, newEffect],
+            activeEffects: [...currentActiveEffects, newEffect],
           }
         }
         // Unknown consumable, just update currencies
@@ -430,17 +434,17 @@ function gameReducer(state: GameContextState, action: GameAction): GameContextSt
       }
 
       // For non-consumables, add to inventory
-      const existingItem = state.inventory.find(i => i.id === item.id)
+      const existingItem = currentInventory.find(i => i.id === item.id)
       let newInventory: InventoryItem[]
 
       if (existingItem) {
-        newInventory = state.inventory.map(i =>
+        newInventory = currentInventory.map(i =>
           i.id === item.id
             ? { ...i, quantity: i.quantity + 1 }
             : i
         )
       } else {
-        newInventory = [...state.inventory, item]
+        newInventory = [...currentInventory, item]
       }
 
       return {

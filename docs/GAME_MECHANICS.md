@@ -161,7 +161,17 @@ idleMult = 1 + (idlePowerLevel × 0.10) + (permIdleLevel × 0.10)
 efficiencyMult = 1 + (efficiencyBotProduction)
 ```
 
-**Location**: `src/lib/game/formulas.ts:139-194`
+### Auto-Turret Visual Feedback
+
+When an auto-turret is active, a pulsing crosshair indicator appears in the top-left corner of the fight screen showing the current DPS:
+
+```
+[🎯] X DPS
+```
+
+The turret deals passive damage to the boss every second during the idle tick.
+
+**Location**: `src/lib/game/formulas.ts:139-194`, `src/app/page.tsx`
 
 ---
 
@@ -230,6 +240,11 @@ efficiencyMult = 1 + (efficiencyBotProduction)
 - Lifetime statistics
 - Achievements
 
+### Starting Bonuses on Prestige
+
+When prestiging, the following bonuses are applied:
+- **Starting Scrap**: `permStartingScrapLevel × 1000` scrap
+
 **Location**: `src/lib/game/formulas.ts:262-292`, `src/contexts/GameContext.tsx` PRESTIGE action
 
 ---
@@ -254,9 +269,17 @@ efficiencyMult = 1 + (efficiencyBotProduction)
 - `scrap_boost`: Multiplies scrap rewards from bosses
 - `data_boost`: Multiplies data rewards from bosses
 - `reward_boost`: Multiplies all boss rewards
-- `auto_tap`: Automatic taps per second (future implementation)
+- `auto_tap`: Automatic taps per second (deals calculated damage every tick)
 
-**Location**: `src/contexts/GameContext.tsx:325-371`
+### Visual Indicators
+
+Active effects show in the top-left corner of the fight screen:
+- **Damage Boost**: Orange flame icon with multiplier
+- **Scrap Boost**: Green gift icon with multiplier
+- **Data Boost**: Cyan sparkle icon with multiplier
+- **Auto-Turret**: Red crosshair icon with DPS value
+
+**Location**: `src/contexts/GameContext.tsx:325-371`, `src/app/page.tsx`
 
 ---
 
