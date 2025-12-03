@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
         user.gameState.offlineCapLevel
       )
 
-      if (earnings.scrap > 0 || earnings.data > 0) {
+      if (earnings.scrap > 0 || earnings.data > 0 || earnings.dps > 0) {
         offlineEarnings = earnings
       }
     }

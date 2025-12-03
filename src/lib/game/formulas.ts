@@ -242,11 +242,12 @@ export function calculateOfflineEarnings(
   const capSeconds = getOfflineCapSeconds(storageLevel, permStorageLevel)
   const cappedSeconds = Math.min(secondsAway, capSeconds)
 
-  const { scrap, data } = getTotalIdleProduction(machines, upgrades)
+  const { scrap, data, dps } = getTotalIdleProduction(machines, upgrades)
 
   return {
     scrap: Math.floor(scrap * cappedSeconds),
     data: Math.floor(data * cappedSeconds),
+    dps: Math.floor(dps * cappedSeconds), // Total damage dealt while offline
     timeAway: secondsAway,
     cappedAt: cappedSeconds,
     wasCapped: secondsAway > capSeconds,

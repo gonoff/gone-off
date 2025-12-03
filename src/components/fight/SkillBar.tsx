@@ -100,7 +100,7 @@ export function SkillBar({ skills, onUseSkill }: SkillBarProps) {
                 <div className="absolute inset-0 flex items-center justify-center">
                   <motion.span
                     className="text-lg font-bold font-mono text-white drop-shadow-lg"
-                    key={Math.ceil(skill.currentCooldown)}
+                    key={`cooldown-${skill.id}-${Math.floor(skill.currentCooldown)}`}
                     initial={{ scale: 1.3, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
                   >

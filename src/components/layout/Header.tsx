@@ -3,8 +3,7 @@
 import { useGame } from '@/contexts/GameContext'
 import { formatNumber } from '@/lib/game/formulas'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Settings, Cog, Database, Gem } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { Cog, Database, Gem } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
 export function Header() {
@@ -123,13 +122,6 @@ export function Header() {
             )}
           </AnimatePresence>
         </div>
-
-        {/* Settings Button */}
-        <motion.div whileHover={{ rotate: 90 }} transition={{ duration: 0.3 }}>
-          <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-primary">
-            <Settings className="w-5 h-5" />
-          </Button>
-        </motion.div>
       </div>
 
       {/* Bottom glow line */}

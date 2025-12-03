@@ -50,7 +50,7 @@ interface GameContextState {
   // UI State
   damageNumbers: DamageNumber[]
   showWelcomeBack: boolean
-  offlineEarnings: { scrap: number; data: number; timeAway: number } | null
+  offlineEarnings: { scrap: number; data: number; dps: number; timeAway: number } | null
 }
 
 interface DamageNumber {
@@ -82,7 +82,7 @@ type GameAction =
   | { type: 'PRESTIGE' }
   | { type: 'TICK_IDLE' }
   | { type: 'DISMISS_WELCOME_BACK' }
-  | { type: 'SET_OFFLINE_EARNINGS'; payload: { scrap: number; data: number; timeAway: number } | null }
+  | { type: 'SET_OFFLINE_EARNINGS'; payload: { scrap: number; data: number; dps: number; timeAway: number } | null }
   | { type: 'COLLECT_OFFLINE' }
   | { type: 'USE_SKILL'; payload: { skillId: string; effect: { type: string; value: number; duration?: number } } }
   | { type: 'CLEAN_EXPIRED_EFFECTS' }
@@ -400,6 +400,7 @@ function gameReducer(state: GameContextState, action: GameAction): GameContextSt
         inventory: [],
         machines: [],
         upgrades: permUpgrades,
+        activeEffects: [], // Clear all active effects on prestige
         prestigeStats: {
           ...state.prestigeStats,
           totalPrestiges: state.prestigeStats.totalPrestiges + 1,
@@ -420,12 +421,19 @@ function gameReducer(state: GameContextState, action: GameAction): GameContextSt
     case 'COLLECT_OFFLINE': {
       if (!state.offlineEarnings) return state
 
+      // Apply offline DPS damage to boss
+      const offlineDamage = state.offlineEarnings.dps || 0
+      const newBossHp = Math.max(0, state.boss.hp - offlineDamage)
+
       return {
         ...state,
+        boss: { ...state.boss, hp: newBossHp },
         gameState: {
           ...state.gameState,
           scrap: state.gameState.scrap + state.offlineEarnings.scrap,
           dataPoints: state.gameState.dataPoints + state.offlineEarnings.data,
+          currentBossHp: newBossHp,
+          totalDamageDealt: state.gameState.totalDamageDealt + offlineDamage,
         },
         prestigeStats: {
           ...state.prestigeStats,
@@ -496,7 +504,7 @@ interface GameContextValue extends GameContextState {
   login: (username: string) => Promise<boolean>
   logout: () => void
   buyItem: (itemId: number) => Promise<boolean>
-  equipItem: (itemId: number, type: 'weapon' | 'armor') => void
+  equipItem: (itemId: number, type: 'weapon' | 'armor') => Promise<boolean>
   upgradeWeapon: (itemId: number) => Promise<boolean>
   buyMachine: (machineType: MachineType) => Promise<boolean>
   buyUpgrade: (upgradeType: string, isPermanent: boolean) => Promise<boolean>
@@ -516,6 +524,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(gameReducer, initialState)
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const idleIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const scheduledRemovals = useRef<Set<string>>(new Set())
 
   // Check for boss defeat
   useEffect(() => {
@@ -527,9 +536,13 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   // Remove damage numbers after animation
   useEffect(() => {
     state.damageNumbers.forEach(dmg => {
-      setTimeout(() => {
-        dispatch({ type: 'REMOVE_DAMAGE_NUMBER', payload: dmg.id })
-      }, 600)
+      if (!scheduledRemovals.current.has(dmg.id)) {
+        scheduledRemovals.current.add(dmg.id)
+        setTimeout(() => {
+          dispatch({ type: 'REMOVE_DAMAGE_NUMBER', payload: dmg.id })
+          scheduledRemovals.current.delete(dmg.id)
+        }, 600)
+      }
     })
   }, [state.damageNumbers])
 
@@ -678,9 +691,13 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
   const buyItem = useCallback(async (itemId: number): Promise<boolean> => {
     try {
+      const sessionToken = localStorage.getItem('sessionToken')
       const response = await fetch('/api/shop/buy', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sessionToken}`,
+        },
         body: JSON.stringify({ itemId }),
       })
 
@@ -700,15 +717,38 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
-  const equipItem = useCallback((itemId: number, type: 'weapon' | 'armor') => {
-    dispatch({ type: 'EQUIP_ITEM', payload: { itemId, type } })
+  const equipItem = useCallback(async (itemId: number, type: 'weapon' | 'armor'): Promise<boolean> => {
+    try {
+      const sessionToken = localStorage.getItem('sessionToken')
+      const response = await fetch('/api/game/equip', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sessionToken}`,
+        },
+        body: JSON.stringify({ itemId }),
+      })
+
+      if (response.ok) {
+        dispatch({ type: 'EQUIP_ITEM', payload: { itemId, type } })
+        return true
+      }
+      return false
+    } catch (error) {
+      console.error('Equip failed:', error)
+      return false
+    }
   }, [])
 
   const upgradeWeapon = useCallback(async (itemId: number): Promise<boolean> => {
     try {
+      const sessionToken = localStorage.getItem('sessionToken')
       const response = await fetch('/api/shop/upgrade-weapon', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sessionToken}`,
+        },
         body: JSON.stringify({ itemId }),
       })
 
@@ -730,9 +770,13 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
   const buyMachine = useCallback(async (machineType: MachineType): Promise<boolean> => {
     try {
+      const sessionToken = localStorage.getItem('sessionToken')
       const response = await fetch('/api/machines/buy', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sessionToken}`,
+        },
         body: JSON.stringify({ machineType }),
       })
 
@@ -754,9 +798,13 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
   const buyUpgrade = useCallback(async (upgradeType: string, isPermanent: boolean): Promise<boolean> => {
     try {
+      const sessionToken = localStorage.getItem('sessionToken')
       const response = await fetch('/api/upgrades/buy', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sessionToken}`,
+        },
         body: JSON.stringify({ upgradeType }),
       })
 
@@ -782,8 +830,12 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
   const prestige = useCallback(async (): Promise<boolean> => {
     try {
+      const sessionToken = localStorage.getItem('sessionToken')
       const response = await fetch('/api/prestige/reboot', {
         method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${sessionToken}`,
+        },
       })
 
       if (response.ok) {

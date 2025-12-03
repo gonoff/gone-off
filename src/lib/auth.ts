@@ -60,6 +60,11 @@ export function convertBigIntToNumber(obj: unknown): unknown {
     return Number(obj)
   }
 
+  // Handle Prisma Decimal type
+  if (obj && typeof obj === 'object' && 'toNumber' in obj && typeof (obj as { toNumber: () => number }).toNumber === 'function') {
+    return (obj as { toNumber: () => number }).toNumber()
+  }
+
   if (Array.isArray(obj)) {
     return obj.map(convertBigIntToNumber)
   }

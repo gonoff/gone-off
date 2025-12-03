@@ -36,15 +36,23 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Calculate cost
-    const scrapCost = Number(item.costScrap) * quantity
-    const dataCost = Number(item.costData) * quantity
+    // Input validation
+    if (quantity <= 0 || !Number.isInteger(quantity)) {
+      return NextResponse.json(
+        { error: 'Invalid quantity' },
+        { status: 400 }
+      )
+    }
 
-    // Check if user has enough currency
-    const currentScrap = Number(user.gameState.scrap)
-    const currentData = Number(user.gameState.dataPoints)
+    // Calculate cost using BigInt to avoid precision loss
+    const scrapCostBigInt = item.costScrap * BigInt(quantity)
+    const dataCostBigInt = item.costData * BigInt(quantity)
 
-    if (currentScrap < scrapCost || currentData < dataCost) {
+    // Check if user has enough currency using BigInt comparison
+    const currentScrap = user.gameState.scrap
+    const currentData = user.gameState.dataPoints
+
+    if (currentScrap < scrapCostBigInt || currentData < dataCostBigInt) {
       return NextResponse.json(
         { error: 'Not enough currency' },
         { status: 400 }
@@ -61,42 +69,45 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Deduct currency and add to inventory
-    const newScrap = currentScrap - scrapCost
-    const newData = currentData - dataCost
+    // Calculate new currency values
+    const newScrap = currentScrap - scrapCostBigInt
+    const newData = currentData - dataCostBigInt
 
-    await prisma.gameState.update({
-      where: { userId: user.id },
-      data: {
-        scrap: BigInt(newScrap),
-        dataPoints: BigInt(newData),
-      },
-    })
-
-    if (existingInventory) {
-      // Increase quantity for consumables
-      await prisma.inventory.update({
-        where: { id: existingInventory.id },
-        data: { quantity: existingInventory.quantity + quantity },
-      })
-    } else {
-      // Create new inventory entry
-      await prisma.inventory.create({
+    // Use transaction to ensure atomicity
+    await prisma.$transaction(async (tx) => {
+      await tx.gameState.update({
+        where: { userId: user.id },
         data: {
-          userId: user.id,
-          itemId: item.id,
-          quantity,
-          upgradeLevel: 0,
-          isEquipped: false,
+          scrap: newScrap,
+          dataPoints: newData,
         },
       })
-    }
+
+      if (existingInventory) {
+        // Increase quantity for consumables
+        await tx.inventory.update({
+          where: { id: existingInventory.id },
+          data: { quantity: existingInventory.quantity + quantity },
+        })
+      } else {
+        // Create new inventory entry
+        await tx.inventory.create({
+          data: {
+            userId: user.id,
+            itemId: item.id,
+            quantity,
+            upgradeLevel: 0,
+            isEquipped: false,
+          },
+        })
+      }
+    })
 
     // Return updated item info
     const responseData = convertBigIntToNumber({
       success: true,
-      newScrap,
-      newData,
+      newScrap: newScrap,
+      newData: newData,
       item: {
         id: item.id,
         name: item.name,

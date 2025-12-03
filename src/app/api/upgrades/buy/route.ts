@@ -45,22 +45,23 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Calculate cost
+    // Calculate cost using BigInt for precision
     const cost = getUpgradeCost(upgradeType, currentLevel, isPermanent)
+    const costBigInt = BigInt(cost)
 
-    // Check currency
-    const currentScrap = Number(user.gameState.scrap)
-    const currentData = Number(user.gameState.dataPoints)
+    // Check currency using BigInt comparison
+    const currentScrap = user.gameState.scrap
+    const currentData = user.gameState.dataPoints
     const currentCoreFragments = user.gameState.coreFragments
 
-    if (config.costCurrency === 'scrap' && currentScrap < cost) {
+    if (config.costCurrency === 'scrap' && currentScrap < costBigInt) {
       return NextResponse.json(
         { error: 'Not enough scrap' },
         { status: 400 }
       )
     }
 
-    if (config.costCurrency === 'data' && currentData < cost) {
+    if (config.costCurrency === 'data' && currentData < costBigInt) {
       return NextResponse.json(
         { error: 'Not enough data' },
         { status: 400 }
@@ -74,46 +75,49 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Deduct cost
-    const newScrap = config.costCurrency === 'scrap' ? currentScrap - cost : currentScrap
-    const newData = config.costCurrency === 'data' ? currentData - cost : currentData
+    // Calculate new currency values using BigInt
+    const newScrap = config.costCurrency === 'scrap' ? currentScrap - costBigInt : currentScrap
+    const newData = config.costCurrency === 'data' ? currentData - costBigInt : currentData
     const newCoreFragments = config.costCurrency === 'core_fragments'
       ? currentCoreFragments - cost
       : currentCoreFragments
 
-    await prisma.gameState.update({
-      where: { userId: user.id },
-      data: {
-        scrap: BigInt(newScrap),
-        dataPoints: BigInt(newData),
-        coreFragments: newCoreFragments,
-      },
-    })
-
     // Update or create upgrade
     const newLevel = currentLevel + 1
 
-    if (existingUpgrade) {
-      await prisma.upgrade.update({
-        where: { id: existingUpgrade.id },
-        data: { level: newLevel },
-      })
-    } else {
-      await prisma.upgrade.create({
+    // Use transaction to ensure atomicity
+    await prisma.$transaction(async (tx) => {
+      await tx.gameState.update({
+        where: { userId: user.id },
         data: {
-          userId: user.id,
-          upgradeType,
-          level: newLevel,
-          isPermanent,
+          scrap: newScrap,
+          dataPoints: newData,
+          coreFragments: newCoreFragments,
         },
       })
-    }
+
+      if (existingUpgrade) {
+        await tx.upgrade.update({
+          where: { id: existingUpgrade.id },
+          data: { level: newLevel },
+        })
+      } else {
+        await tx.upgrade.create({
+          data: {
+            userId: user.id,
+            upgradeType,
+            level: newLevel,
+            isPermanent,
+          },
+        })
+      }
+    })
 
     return NextResponse.json(convertBigIntToNumber({
       success: true,
       newLevel,
-      newScrap,
-      newData,
+      newScrap: newScrap,
+      newData: newData,
       newCoreFragments,
     }))
   } catch (error) {

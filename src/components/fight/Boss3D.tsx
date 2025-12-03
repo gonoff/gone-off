@@ -548,6 +548,11 @@ function RobotBoss({ stage, isHit, isDead, hpPercent, isEntering }: RobotBossPro
     }
   }, [isHit])
 
+  // Reset entrance animation when stage changes
+  useEffect(() => {
+    setEntranceProgress(0)
+  }, [stage])
+
   // Boss type detection
   const isMajorBoss = stage % 100 === 0
   const isNamedBoss = stage % 50 === 0 && !isMajorBoss
@@ -614,6 +619,11 @@ function RobotBoss({ stage, isHit, isDead, hpPercent, isEntering }: RobotBossPro
       groupRef.current.scale.x = THREE.MathUtils.lerp(groupRef.current.scale.x, baseScale, 0.1)
       groupRef.current.scale.y = THREE.MathUtils.lerp(groupRef.current.scale.y, baseScale, 0.1)
       groupRef.current.scale.z = THREE.MathUtils.lerp(groupRef.current.scale.z, baseScale, 0.1)
+
+      // Safety net: force scale recovery if stuck at near-zero
+      if (entranceProgress >= 1 && groupRef.current.scale.x < baseScale * 0.5) {
+        groupRef.current.scale.setScalar(baseScale)
+      }
     }
 
     // Eye glow pulse
@@ -646,21 +656,21 @@ function RobotBoss({ stage, isHit, isDead, hpPercent, isEntering }: RobotBossPro
         <Box args={[1.4, 1.8, 1]} position={[0, 0, 0]}>
           <MeshDistortMaterial
             color={hitFlash > 0.5 ? flashMix : baseColor}
-            metalness={0.9}
-            roughness={0.1}
+            metalness={0.5}
+            roughness={0.4}
             distort={isHit ? 0.2 : 0.05}
             speed={3}
             emissive={baseColor}
-            emissiveIntensity={hitFlash * 2}
+            emissiveIntensity={0.3 + hitFlash * 2}
           />
         </Box>
 
         {/* Chest armor plates */}
         <Box args={[0.5, 0.8, 0.15]} position={[-0.35, 0.3, 0.55]}>
-          <meshStandardMaterial color="#333" metalness={0.95} roughness={0.05} />
+          <meshStandardMaterial color="#555" metalness={0.6} roughness={0.3} emissive="#222" emissiveIntensity={0.2} />
         </Box>
         <Box args={[0.5, 0.8, 0.15]} position={[0.35, 0.3, 0.55]}>
-          <meshStandardMaterial color="#333" metalness={0.95} roughness={0.05} />
+          <meshStandardMaterial color="#555" metalness={0.6} roughness={0.3} emissive="#222" emissiveIntensity={0.2} />
         </Box>
 
         {/* Core energy sphere */}
@@ -728,16 +738,16 @@ function RobotBoss({ stage, isHit, isDead, hpPercent, isEntering }: RobotBossPro
           <Box args={[0.9, 0.7, 0.7]}>
             <meshStandardMaterial
               color={hitFlash > 0.5 ? flashMix : baseColor}
-              metalness={0.9}
-              roughness={0.1}
+              metalness={0.5}
+              roughness={0.4}
               emissive={baseColor}
-              emissiveIntensity={hitFlash}
+              emissiveIntensity={0.3 + hitFlash}
             />
           </Box>
 
           {/* Visor */}
           <Box args={[0.8, 0.25, 0.1]} position={[0, 0.05, 0.35]}>
-            <meshStandardMaterial color="#111" metalness={0.5} roughness={0.3} />
+            <meshStandardMaterial color="#222" metalness={0.3} roughness={0.5} />
           </Box>
 
           {/* Eye Left */}
@@ -752,7 +762,7 @@ function RobotBoss({ stage, isHit, isDead, hpPercent, isEntering }: RobotBossPro
 
           {/* Antenna */}
           <Cylinder args={[0.04, 0.04, 0.5]} position={[0, 0.6, 0]}>
-            <meshStandardMaterial color="#444" metalness={0.9} roughness={0.1} />
+            <meshStandardMaterial color="#666" metalness={0.5} roughness={0.4} />
           </Cylinder>
           <Sphere args={[0.08, 8, 8]} position={[0, 0.85, 0]}>
             <meshStandardMaterial color="#ff0000" emissive="#ff0000" emissiveIntensity={2} />
@@ -760,73 +770,73 @@ function RobotBoss({ stage, isHit, isDead, hpPercent, isEntering }: RobotBossPro
 
           {/* Side head details */}
           <Cylinder args={[0.08, 0.08, 0.2]} position={[-0.5, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
-            <meshStandardMaterial color="#555" metalness={0.8} roughness={0.2} />
+            <meshStandardMaterial color="#888" metalness={0.5} roughness={0.4} />
           </Cylinder>
           <Cylinder args={[0.08, 0.08, 0.2]} position={[0.5, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
-            <meshStandardMaterial color="#555" metalness={0.8} roughness={0.2} />
+            <meshStandardMaterial color="#888" metalness={0.5} roughness={0.4} />
           </Cylinder>
         </group>
 
         {/* Left Arm */}
         <group ref={leftArmRef} position={[-0.95, 0.4, 0]}>
           <Sphere args={[0.2, 12, 12]} position={[0, 0, 0]}>
-            <meshStandardMaterial color="#444" metalness={0.9} roughness={0.1} />
+            <meshStandardMaterial color="#777" metalness={0.5} roughness={0.4} />
           </Sphere>
           <Box args={[0.3, 0.7, 0.3]} position={[-0.15, -0.5, 0]}>
-            <meshStandardMaterial color="#555" metalness={0.8} roughness={0.2} />
+            <meshStandardMaterial color="#888" metalness={0.5} roughness={0.4} />
           </Box>
           <Box args={[0.25, 0.6, 0.25]} position={[-0.15, -1.1, 0]}>
             <meshStandardMaterial
               color={baseColor}
-              metalness={0.9}
-              roughness={0.1}
+              metalness={0.5}
+              roughness={0.4}
               emissive={baseColor}
-              emissiveIntensity={0.3}
+              emissiveIntensity={0.5}
             />
           </Box>
           <Box args={[0.15, 0.25, 0.08]} position={[-0.25, -1.5, -0.1]}>
-            <meshStandardMaterial color="#333" metalness={0.9} roughness={0.1} />
+            <meshStandardMaterial color="#666" metalness={0.5} roughness={0.4} />
           </Box>
           <Box args={[0.15, 0.25, 0.08]} position={[-0.05, -1.5, -0.1]}>
-            <meshStandardMaterial color="#333" metalness={0.9} roughness={0.1} />
+            <meshStandardMaterial color="#666" metalness={0.5} roughness={0.4} />
           </Box>
         </group>
 
         {/* Right Arm */}
         <group ref={rightArmRef} position={[0.95, 0.4, 0]}>
           <Sphere args={[0.2, 12, 12]} position={[0, 0, 0]}>
-            <meshStandardMaterial color="#444" metalness={0.9} roughness={0.1} />
+            <meshStandardMaterial color="#777" metalness={0.5} roughness={0.4} />
           </Sphere>
           <Box args={[0.3, 0.7, 0.3]} position={[0.15, -0.5, 0]}>
-            <meshStandardMaterial color="#555" metalness={0.8} roughness={0.2} />
+            <meshStandardMaterial color="#888" metalness={0.5} roughness={0.4} />
           </Box>
           <Cylinder args={[0.15, 0.2, 0.7]} position={[0.15, -1.1, 0]}>
             <meshStandardMaterial
               color={baseColor}
-              metalness={0.9}
-              roughness={0.1}
+              metalness={0.5}
+              roughness={0.4}
               emissive={baseColor}
-              emissiveIntensity={0.3}
+              emissiveIntensity={0.5}
             />
           </Cylinder>
           <Cylinder args={[0.08, 0.1, 0.3]} position={[0.15, -1.5, 0]}>
-            <meshStandardMaterial color="#222" metalness={0.95} roughness={0.05} />
+            <meshStandardMaterial color="#555" metalness={0.5} roughness={0.4} />
           </Cylinder>
         </group>
 
         {/* Legs */}
         <group position={[0, -1.4, 0]}>
           <Box args={[0.35, 0.9, 0.35]} position={[-0.4, -0.3, 0]}>
-            <meshStandardMaterial color="#444" metalness={0.85} roughness={0.15} />
+            <meshStandardMaterial color="#777" metalness={0.5} roughness={0.4} />
           </Box>
           <Box args={[0.4, 0.2, 0.5]} position={[-0.4, -0.85, 0.05]}>
-            <meshStandardMaterial color="#333" metalness={0.9} roughness={0.1} />
+            <meshStandardMaterial color="#666" metalness={0.5} roughness={0.4} />
           </Box>
           <Box args={[0.35, 0.9, 0.35]} position={[0.4, -0.3, 0]}>
-            <meshStandardMaterial color="#444" metalness={0.85} roughness={0.15} />
+            <meshStandardMaterial color="#777" metalness={0.5} roughness={0.4} />
           </Box>
           <Box args={[0.4, 0.2, 0.5]} position={[0.4, -0.85, 0.05]}>
-            <meshStandardMaterial color="#333" metalness={0.9} roughness={0.1} />
+            <meshStandardMaterial color="#666" metalness={0.5} roughness={0.4} />
           </Box>
         </group>
 
@@ -933,19 +943,20 @@ export function Boss3D({ stage, isHit, isDead, hpPercent }: Boss3DProps) {
         style={{ background: 'transparent' }}
       >
         {/* Lighting */}
-        <ambientLight intensity={0.3} />
-        <pointLight position={[10, 10, 10]} intensity={1.5} color="#22d3ee" />
-        <pointLight position={[-10, -5, -10]} intensity={0.8} color="#a855f7" />
-        <pointLight position={[0, -5, 5]} intensity={0.5} color="#f59e0b" />
+        <ambientLight intensity={0.6} />
+        <pointLight position={[0, 0, 5]} intensity={2} color="#ffffff" />
+        <pointLight position={[3, 3, 4]} intensity={1.5} color="#22d3ee" />
+        <pointLight position={[-3, 3, 4]} intensity={1.5} color="#a855f7" />
+        <pointLight position={[0, -2, 3]} intensity={0.8} color="#f59e0b" />
         <spotLight
-          position={[0, 10, 10]}
-          angle={0.4}
-          penumbra={1}
-          intensity={2}
+          position={[0, 5, 8]}
+          angle={0.5}
+          penumbra={0.5}
+          intensity={3}
           color="#ffffff"
           castShadow
         />
-        <pointLight position={[0, 0, -5]} intensity={0.8} color="#22d3ee" />
+        <pointLight position={[0, 2, -3]} intensity={0.6} color="#22d3ee" />
 
         {/* Stars background - reduced count for performance */}
         <Stars radius={50} depth={50} count={200} factor={2} fade speed={0.5} />

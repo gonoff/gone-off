@@ -148,6 +148,7 @@ export interface DamageResult {
 export interface OfflineEarnings {
   scrap: number
   data: number
+  dps: number // Total damage dealt to boss while offline
   timeAway: number
   cappedAt: number
   wasCapped: boolean

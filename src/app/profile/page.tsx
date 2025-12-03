@@ -22,6 +22,7 @@ import { cn } from '@/lib/utils'
 export default function ProfilePage() {
   const { username, gameState, prestigeStats, upgrades, prestige, logout } = useGame()
   const [showPrestigeConfirm, setShowPrestigeConfirm] = useState(false)
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
   const [isPrestiging, setIsPrestiging] = useState(false)
 
   const prestigeBonusLevel = upgrades.find((u) => u.upgradeType === 'perm_prestige_bonus')?.level ?? 0
@@ -62,7 +63,7 @@ export default function ProfilePage() {
           <h1 className="text-xl font-orbitron font-bold text-primary">OPERATIVE</h1>
         </div>
         <button
-          onClick={logout}
+          onClick={() => setShowLogoutConfirm(true)}
           className="flex items-center gap-1 px-3 py-1.5 rounded text-xs text-muted-foreground hover:text-red-400 hover:bg-red-400/10 transition-all"
         >
           <LogOut className="w-4 h-4" />
@@ -242,6 +243,52 @@ export default function ProfilePage() {
                   className="flex-1 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-red-600 text-white font-bold hover:from-purple-500 hover:to-red-500 transition-all"
                 >
                   {isPrestiging ? 'Rebooting...' : 'CONFIRM'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Logout Confirm Modal */}
+      <AnimatePresence>
+        {showLogoutConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="w-full max-w-sm p-6 rounded-2xl bg-card border-2 border-border"
+            >
+              <div className="flex items-center gap-2 text-foreground mb-4">
+                <LogOut className="w-6 h-6" />
+                <h2 className="text-xl font-bold font-orbitron">LOGOUT</h2>
+              </div>
+
+              <p className="text-muted-foreground mb-6">
+                Are you sure you want to logout? Your progress is saved automatically.
+              </p>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowLogoutConfirm(false)}
+                  className="flex-1 py-2 rounded-lg bg-accent text-accent-foreground hover:bg-accent/80 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    logout()
+                    setShowLogoutConfirm(false)
+                  }}
+                  className="flex-1 py-2 rounded-lg bg-red-600 text-white font-bold hover:bg-red-500 transition-all"
+                >
+                  Logout
                 </button>
               </div>
             </motion.div>

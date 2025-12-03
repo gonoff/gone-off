@@ -114,9 +114,9 @@ export default function ShopPage() {
     setPurchasing(null)
   }
 
-  const handleEquip = (item: ShopItem) => {
+  const handleEquip = async (item: ShopItem) => {
     if (item.type === 'weapon' || item.type === 'armor') {
-      equipItem(item.id, item.type)
+      await equipItem(item.id, item.type)
     }
   }
 

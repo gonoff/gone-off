@@ -62,6 +62,7 @@ export default function FightPage() {
   const [combo, setCombo] = useState(0)
   const [lastTapTime, setLastTapTime] = useState(0)
   const comboTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const timeoutsRef = useRef<Set<NodeJS.Timeout>>(new Set())
 
   // Screen effects state
   const [screenShake, setScreenShake] = useState(false)
@@ -72,6 +73,27 @@ export default function FightPage() {
 
   // Skills state
   const [skillCooldowns, setSkillCooldowns] = useState<Record<string, number>>({})
+
+  // Helper to create tracked timeouts that are cleaned up on unmount
+  const safeTimeout = useCallback((callback: () => void, delay: number) => {
+    const id = setTimeout(() => {
+      timeoutsRef.current.delete(id)
+      callback()
+    }, delay)
+    timeoutsRef.current.add(id)
+    return id
+  }, [])
+
+  // Cleanup all timeouts on unmount
+  useEffect(() => {
+    return () => {
+      if (comboTimeoutRef.current) {
+        clearTimeout(comboTimeoutRef.current)
+      }
+      timeoutsRef.current.forEach((id) => clearTimeout(id))
+      timeoutsRef.current.clear()
+    }
+  }, [])
 
   // Derive active buffs from context activeEffects
   const now = Date.now()
@@ -86,6 +108,8 @@ export default function FightPage() {
 
   // Track previous stage for stage clear detection
   const prevStageRef = useRef(gameState.currentStage)
+  // Track current boss rewards (to show correct loot on defeat)
+  const currentBossRewardsRef = useRef(boss.rewards)
 
   // Skill cooldown tick
   useEffect(() => {
@@ -108,10 +132,10 @@ export default function FightPage() {
     if (gameState.currentStage > prevStageRef.current) {
       const newStage = gameState.currentStage
 
-      // Save rewards for loot explosion
+      // Save rewards for loot explosion (use ref which has PREVIOUS boss rewards)
       setLastRewards({
-        scrap: boss.rewards?.scrap ?? 0,
-        data: boss.rewards?.data ?? 0,
+        scrap: currentBossRewardsRef.current?.scrap ?? 0,
+        data: currentBossRewardsRef.current?.data ?? 0,
       })
 
       // Trigger loot explosion
@@ -120,12 +144,14 @@ export default function FightPage() {
       // Stage clear celebration for milestones
       if ((newStage - 1) % 10 === 0) {
         setStageClear(newStage - 1)
-        setTimeout(() => setStageClear(null), 2000)
+        safeTimeout(() => setStageClear(null), 2000)
       }
 
       prevStageRef.current = newStage
+      // Update ref to new boss rewards for next defeat
+      currentBossRewardsRef.current = boss.rewards
     }
-  }, [gameState.currentStage, boss.rewards])
+  }, [gameState.currentStage, boss.rewards, safeTimeout])
 
   const handleTap = useCallback(
     (x: number, y: number) => {
@@ -152,14 +178,14 @@ export default function FightPage() {
 
       // Hit effects
       setIsHit(true)
-      setTimeout(() => setIsHit(false), 100)
+      safeTimeout(() => setIsHit(false), 100)
 
       // Check if this was a crit (we can check from the latest damage number)
       const lastDamage = damageNumbers[damageNumbers.length - 1]
       if (lastDamage?.isCritical) {
         setScreenFlash('crit')
         setScreenShake(true)
-        setTimeout(() => {
+        safeTimeout(() => {
           setScreenFlash('none')
           setScreenShake(false)
         }, 150)
@@ -170,15 +196,19 @@ export default function FightPage() {
         setIsDead(true)
         setScreenFlash('death')
         setScreenShake(true)
-        setTimeout(() => {
+        safeTimeout(() => {
           setIsDead(false)
           setScreenFlash('none')
           setScreenShake(false)
         }, 500)
       }
     },
-    [tap, boss.hp, lastTapTime, damageNumbers]
+    [tap, boss.hp, lastTapTime, damageNumbers, safeTimeout]
   )
+
+  const handleLootComplete = useCallback(() => {
+    setLootTrigger(false)
+  }, [])
 
   const handleUseSkill = useCallback((skillId: string) => {
     const skill = SKILLS.find((s) => s.id === skillId)
@@ -196,21 +226,21 @@ export default function FightPage() {
     // Visual feedback based on skill type
     if (skill.effect.type === 'damage_boost') {
       setScreenFlash('crit')
-      setTimeout(() => setScreenFlash('none'), 200)
+      safeTimeout(() => setScreenFlash('none'), 200)
     } else if (skill.effect.type === 'instant_damage') {
       setScreenShake(true)
       setScreenFlash('hit')
       setIsHit(true)
-      setTimeout(() => {
+      safeTimeout(() => {
         setScreenShake(false)
         setScreenFlash('none')
         setIsHit(false)
       }, 300)
     } else if (skill.effect.type === 'reward_boost') {
       setScreenFlash('crit')
-      setTimeout(() => setScreenFlash('none'), 200)
+      safeTimeout(() => setScreenFlash('none'), 200)
     }
-  }, [skillCooldowns, useSkill])
+  }, [skillCooldowns, useSkill, safeTimeout])
 
   // Get equipped weapon for stats display
   const equippedWeapon = inventory.find(
@@ -320,7 +350,7 @@ export default function FightPage() {
             trigger={lootTrigger}
             scrapAmount={lastRewards.scrap}
             dataAmount={lastRewards.data}
-            onComplete={() => setLootTrigger(false)}
+            onComplete={handleLootComplete}
           />
         </div>
 
