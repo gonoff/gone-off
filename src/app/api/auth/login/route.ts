@@ -128,6 +128,7 @@ export async function POST(request: NextRequest) {
         : null,
       inventory: user.inventory.map((inv) => ({
         id: inv.item.id,
+        inventoryId: inv.id,
         name: inv.item.name,
         type: inv.item.type,
         description: inv.item.description,
