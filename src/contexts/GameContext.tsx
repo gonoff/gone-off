@@ -162,6 +162,22 @@ function gameReducer(state: GameContextState, action: GameAction): GameContextSt
 
     case 'LOAD_GAME_DATA': {
       const newState = { ...state, ...action.payload, isLoading: false }
+      // Ensure critical state objects are never null
+      if (!newState.prestigeStats) {
+        newState.prestigeStats = initialPrestigeStats
+      }
+      if (!newState.inventory) {
+        newState.inventory = []
+      }
+      if (!newState.machines) {
+        newState.machines = []
+      }
+      if (!newState.upgrades) {
+        newState.upgrades = []
+      }
+      if (!newState.activeEffects) {
+        newState.activeEffects = []
+      }
       // Regenerate boss info based on loaded stage
       if (action.payload.gameState) {
         newState.boss = getBossInfo(action.payload.gameState.currentStage)
