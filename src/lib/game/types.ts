@@ -59,6 +59,7 @@ export interface Item {
 }
 
 export interface InventoryItem extends Item {
+  inventoryId: number // The Inventory row's primary key (used for equip/upgrade)
   quantity: number
   upgradeLevel: number
   isEquipped: boolean

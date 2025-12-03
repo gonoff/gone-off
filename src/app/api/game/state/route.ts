@@ -70,6 +70,7 @@ export async function GET(request: NextRequest) {
         : null,
       inventory: user.inventory.map((inv) => ({
         id: inv.item.id,
+        inventoryId: inv.id, // The Inventory row's primary key for equip/upgrade
         name: inv.item.name,
         type: inv.item.type,
         description: inv.item.description,

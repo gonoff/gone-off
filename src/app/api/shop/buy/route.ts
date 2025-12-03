@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
     const newData = currentData - dataCostBigInt
 
     // Use transaction to ensure atomicity
-    await prisma.$transaction(async (tx) => {
+    const inventoryRecord = await prisma.$transaction(async (tx) => {
       await tx.gameState.update({
         where: { userId: user.id },
         data: {
@@ -85,13 +85,13 @@ export async function POST(request: NextRequest) {
 
       if (existingInventory) {
         // Increase quantity for consumables
-        await tx.inventory.update({
+        return await tx.inventory.update({
           where: { id: existingInventory.id },
           data: { quantity: existingInventory.quantity + quantity },
         })
       } else {
         // Create new inventory entry
-        await tx.inventory.create({
+        return await tx.inventory.create({
           data: {
             userId: user.id,
             itemId: item.id,
@@ -110,6 +110,7 @@ export async function POST(request: NextRequest) {
       newData: newData,
       item: {
         id: item.id,
+        inventoryId: inventoryRecord.id, // The Inventory row's primary key for equip/upgrade
         name: item.name,
         type: item.type,
         description: item.description,
@@ -124,9 +125,9 @@ export async function POST(request: NextRequest) {
         effectDuration: item.effectDuration,
         effectValue: item.effectValue,
         tier: item.tier,
-        quantity: existingInventory ? existingInventory.quantity + quantity : quantity,
-        upgradeLevel: 0,
-        isEquipped: false,
+        quantity: inventoryRecord.quantity,
+        upgradeLevel: inventoryRecord.upgradeLevel,
+        isEquipped: inventoryRecord.isEquipped,
       },
     })
 
