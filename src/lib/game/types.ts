@@ -153,9 +153,9 @@ export interface OfflineEarnings {
   wasCapped: boolean
 }
 
-// Active effects from consumables
+// Active effects from consumables and skills
 export interface ActiveEffect {
-  type: 'damage_boost' | 'auto_tap' | 'data_boost' | 'scrap_boost' | 'crit_boost'
+  type: 'damage_boost' | 'auto_tap' | 'data_boost' | 'scrap_boost' | 'crit_boost' | 'reward_boost'
   value: number
   endsAt: number
 }

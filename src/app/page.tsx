@@ -52,6 +52,8 @@ export default function FightPage() {
     tap,
     upgrades,
     inventory,
+    activeEffects,
+    useSkill,
   } = useGame()
 
   // Combat state
@@ -70,10 +72,17 @@ export default function FightPage() {
 
   // Skills state
   const [skillCooldowns, setSkillCooldowns] = useState<Record<string, number>>({})
-  const [activeBuffs, setActiveBuffs] = useState<{ damageBoost: number; rewardBoost: number }>({
-    damageBoost: 1,
-    rewardBoost: 1,
-  })
+
+  // Derive active buffs from context activeEffects
+  const now = Date.now()
+  const activeBuffs = {
+    damageBoost: activeEffects
+      .filter(e => e.type === 'damage_boost' && e.endsAt > now)
+      .reduce((mult, e) => mult * e.value, 1),
+    rewardBoost: activeEffects
+      .filter(e => e.type === 'reward_boost' && e.endsAt > now)
+      .reduce((mult, e) => mult * e.value, 1),
+  }
 
   // Track previous stage for stage clear detection
   const prevStageRef = useRef(gameState.currentStage)
@@ -181,37 +190,27 @@ export default function FightPage() {
       [skillId]: skill.cooldown,
     }))
 
-    // Apply skill effect
-    if (skill.effect.type === 'damage_boost') {
-      setActiveBuffs((prev) => ({
-        ...prev,
-        damageBoost: skill.effect.value,
-      }))
-      setTimeout(() => {
-        setActiveBuffs((prev) => ({ ...prev, damageBoost: 1 }))
-      }, skill.effect.duration!)
+    // Apply skill effect via context
+    useSkill(skillId, skill.effect)
 
-      // Visual feedback
+    // Visual feedback based on skill type
+    if (skill.effect.type === 'damage_boost') {
       setScreenFlash('crit')
       setTimeout(() => setScreenFlash('none'), 200)
     } else if (skill.effect.type === 'instant_damage') {
-      // Instant % damage to boss
       setScreenShake(true)
       setScreenFlash('hit')
+      setIsHit(true)
       setTimeout(() => {
         setScreenShake(false)
         setScreenFlash('none')
+        setIsHit(false)
       }, 300)
     } else if (skill.effect.type === 'reward_boost') {
-      setActiveBuffs((prev) => ({
-        ...prev,
-        rewardBoost: skill.effect.value,
-      }))
-      setTimeout(() => {
-        setActiveBuffs((prev) => ({ ...prev, rewardBoost: 1 }))
-      }, skill.effect.duration!)
+      setScreenFlash('crit')
+      setTimeout(() => setScreenFlash('none'), 200)
     }
-  }, [skillCooldowns])
+  }, [skillCooldowns, useSkill])
 
   // Get equipped weapon for stats display
   const equippedWeapon = inventory.find(

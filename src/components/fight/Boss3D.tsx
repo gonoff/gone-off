@@ -880,6 +880,7 @@ export function Boss3D({ stage, isHit, isDead, hpPercent }: Boss3DProps) {
   const [bossEntering, setBossEntering] = useState(false)
   const projectileIdRef = useRef(0)
   const prevStageRef = useRef(stage)
+  const lastProjectileTimeRef = useRef(0)
 
   // Detect stage change for entrance animation
   useEffect(() => {
@@ -890,16 +891,21 @@ export function Boss3D({ stage, isHit, isDead, hpPercent }: Boss3DProps) {
     }
   }, [stage])
 
-  // Spawn projectile when hit
+  // Spawn projectile when hit (throttled to prevent performance issues)
   useEffect(() => {
     if (isHit && !isDead) {
-      const id = projectileIdRef.current++
-      const startX = (Math.random() - 0.5) * 3
-      const startY = -3.5
-      const startZ = 5
-      setProjectiles((prev) => [...prev, { id, pos: [startX, startY, startZ] }])
+      const now = Date.now()
+      // Throttle projectiles to max 1 every 80ms (12.5 per second) and max 5 active
+      if (now - lastProjectileTimeRef.current > 80 && projectiles.length < 5) {
+        lastProjectileTimeRef.current = now
+        const id = projectileIdRef.current++
+        const startX = (Math.random() - 0.5) * 3
+        const startY = -3.5
+        const startZ = 5
+        setProjectiles((prev) => [...prev, { id, pos: [startX, startY, startZ] }])
+      }
     }
-  }, [isHit, isDead])
+  }, [isHit, isDead, projectiles.length])
 
   // Death explosion
   useEffect(() => {

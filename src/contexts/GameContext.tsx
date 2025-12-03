@@ -84,6 +84,8 @@ type GameAction =
   | { type: 'DISMISS_WELCOME_BACK' }
   | { type: 'SET_OFFLINE_EARNINGS'; payload: { scrap: number; data: number; timeAway: number } | null }
   | { type: 'COLLECT_OFFLINE' }
+  | { type: 'USE_SKILL'; payload: { skillId: string; effect: { type: string; value: number; duration?: number } } }
+  | { type: 'CLEAN_EXPIRED_EFFECTS' }
 
 // ============================================
 // INITIAL STATE
@@ -213,11 +215,22 @@ function gameReducer(state: GameContextState, action: GameAction): GameContextSt
       const dropBonus = state.upgrades.find(u => u.upgradeType === 'drop_rate')?.level ?? 0
       const dropMult = 1 + (dropBonus * 0.05)
 
-      const scrapGain = Math.floor(rewards.scrap * dropMult)
-      const dataGain = Math.floor(rewards.data * dropMult)
+      // Check for active reward boost from Data Surge skill
+      const now = Date.now()
+      const rewardBoost = state.activeEffects
+        .filter(e => e.type === 'reward_boost' && e.endsAt > now)
+        .reduce((mult, e) => mult * e.value, 1)
+
+      const scrapGain = Math.floor(rewards.scrap * dropMult * rewardBoost)
+      const dataGain = Math.floor(rewards.data * dropMult * rewardBoost)
 
       const nextStage = state.gameState.currentStage + 1
       const newBoss = getBossInfo(nextStage)
+
+      // Remove reward boost after it's been used (it's a one-time effect)
+      const remainingEffects = state.activeEffects.filter(
+        e => !(e.type === 'reward_boost' && e.endsAt > now)
+      )
 
       return {
         ...state,
@@ -237,6 +250,7 @@ function gameReducer(state: GameContextState, action: GameAction): GameContextSt
           lifetimeData: state.prestigeStats.lifetimeData + dataGain,
           lifetimeBossesKilled: state.prestigeStats.lifetimeBossesKilled + 1,
         },
+        activeEffects: remainingEffects,
       }
     }
 
@@ -423,6 +437,50 @@ function gameReducer(state: GameContextState, action: GameAction): GameContextSt
       }
     }
 
+    case 'USE_SKILL': {
+      const { effect } = action.payload
+      const now = Date.now()
+
+      // Handle instant damage (EMP Burst - 10% of boss max HP)
+      if (effect.type === 'instant_damage') {
+        const instantDamage = Math.floor(state.boss.maxHp * effect.value)
+        const newBossHp = Math.max(0, state.boss.hp - instantDamage)
+
+        return {
+          ...state,
+          boss: { ...state.boss, hp: newBossHp },
+          gameState: {
+            ...state.gameState,
+            currentBossHp: newBossHp,
+            totalDamageDealt: state.gameState.totalDamageDealt + instantDamage,
+          },
+        }
+      }
+
+      // Handle buff effects (damage_boost, reward_boost)
+      if (effect.duration) {
+        const newEffect: ActiveEffect = {
+          type: effect.type as ActiveEffect['type'],
+          value: effect.value,
+          endsAt: now + effect.duration,
+        }
+
+        return {
+          ...state,
+          activeEffects: [...state.activeEffects, newEffect],
+        }
+      }
+
+      return state
+    }
+
+    case 'CLEAN_EXPIRED_EFFECTS': {
+      const now = Date.now()
+      const activeEffects = state.activeEffects.filter(e => e.endsAt > now)
+      if (activeEffects.length === state.activeEffects.length) return state
+      return { ...state, activeEffects }
+    }
+
     default:
       return state
   }
@@ -445,6 +503,7 @@ interface GameContextValue extends GameContextState {
   prestige: () => Promise<boolean>
   collectOffline: () => void
   dismissWelcomeBack: () => void
+  useSkill: (skillId: string, effect: { type: string; value: number; duration?: number }) => void
 }
 
 const GameContext = createContext<GameContextValue | null>(null)
@@ -498,9 +557,15 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
       saveTimeoutRef.current = setTimeout(async () => {
         try {
+          const sessionToken = localStorage.getItem('sessionToken')
+          if (!sessionToken) return
+
           await fetch('/api/game/save', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${sessionToken}`,
+            },
             body: JSON.stringify({ gameState: state.gameState }),
           })
         } catch (error) {
@@ -745,6 +810,18 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     dispatch({ type: 'DISMISS_WELCOME_BACK' })
   }, [])
 
+  const useSkill = useCallback((skillId: string, effect: { type: string; value: number; duration?: number }) => {
+    dispatch({ type: 'USE_SKILL', payload: { skillId, effect } })
+  }, [])
+
+  // Clean up expired effects periodically
+  useEffect(() => {
+    const interval = setInterval(() => {
+      dispatch({ type: 'CLEAN_EXPIRED_EFFECTS' })
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [])
+
   const value: GameContextValue = {
     ...state,
     tap,
@@ -758,6 +835,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     prestige,
     collectOffline,
     dismissWelcomeBack,
+    useSkill,
   }
 
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>
